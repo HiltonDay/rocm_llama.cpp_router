@@ -1,4 +1,4 @@
-FROM rocm/dev-ubuntu24.04:rocm7.2.2_ubuntu24.04_py3.12_pytorch_release_2.10.0
+FROM rocm/pytorch:rocm7.2.2_ubuntu24.04_py3.12_pytorch_release_2.10.0
 
 ARG LLAMA_CPP_COMMIT=63d93d17336e41e4cc73a64451e5b1d2477abdb1
 
@@ -27,8 +27,11 @@ RUN HIPCXX="$(hipconfig -l)/clang" \
       -DLLAMA_OPENSSL=ON \
     && cmake --build build --config Release -j$(nproc)
 
+RUN cmake --install build --config Release
+
 RUN mkdir -p /usr/local/bin/llama \
     && cp build/bin/llama-server /usr/local/bin/llama/llama-server \
+    && cp build/bin/libllama*.so* /usr/local/bin/llama/ \
     && rm -rf /llama.cpp
 
 RUN mkdir -p /models
@@ -36,6 +39,7 @@ RUN mkdir -p /models
 RUN pip install huggingface_hub hf_transfer \
     && pip cache purge
 
+ENV LD_LIBRARY_PATH=/usr/local/lib
 ENV HF_HOME=/huggingface
 
 COPY models.ini /etc/llama-server/models.ini
