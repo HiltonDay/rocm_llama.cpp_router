@@ -33,9 +33,10 @@ docker run -d \
   --device /dev/kfd \
   --device /dev/dri \
   --network none \
-  --mount type=bind,source="$HF_CACHE",target=/huggingface \
-  --mount type=bind,source="$MODELS_DIR",target=/models,ro \
+  --mount type=bind,source="$HF_CACHE",target=/huggingface,z \
+  --mount type=bind,source="$MODELS_DIR",target=/models,ro,z \
   "$IMAGE_NAME" \
   --models-preset /etc/llama-server/models.ini \
   --host 0.0.0.0 \
-  --port 8000
+  --port 8000 \
+  --offline

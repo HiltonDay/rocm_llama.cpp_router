@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcurl4-openssl-dev \
     cmake \
     git \
+    libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 RUN git clone https://github.com/ggml-org/llama.cpp.git /llama.cpp \
@@ -44,10 +45,13 @@ ENV HF_HOME=/huggingface
 
 COPY models.ini /etc/llama-server/models.ini
 
-USER nobody:nogroup
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+USER root
 WORKDIR /models
 
 EXPOSE 8000
 
-ENTRYPOINT ["/usr/local/bin/llama/llama-server"]
-CMD ["--models-preset", "/etc/llama-server/models.ini", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["--models-preset", "/etc/llama-server/models.ini", "--host", "0.0.0.0", "--port", "8000", "--offline"]
