@@ -44,6 +44,9 @@ COPY models.ini /etc/llama-server/models.ini
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
+RUN groupadd -r llama && \
+    useradd -r -g llama -G video,render -d /models -s /sbin/nologin llama
+
 WORKDIR /
 
 EXPOSE 8000

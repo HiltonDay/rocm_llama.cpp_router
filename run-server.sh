@@ -31,6 +31,8 @@ docker run -d \
   --security-opt no-new-privileges:true \
   --device /dev/kfd \
   --device /dev/dri \
+  --group-add video \
+  --group-add render \
   --network host \
   --mount type=bind,source="$HF_CACHE",target=/huggingface,readonly,z \
   --mount type=bind,source="$MODELS_DIR",target=/models,readonly,z \
