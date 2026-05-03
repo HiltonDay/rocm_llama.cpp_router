@@ -44,10 +44,9 @@ COPY models.ini /etc/llama-server/models.ini
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-USER root
-WORKDIR /huggingface
+WORKDIR /
 
 EXPOSE 8000
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-CMD ["--models-preset", "/etc/llama-server/models.ini", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["--models-preset", "/etc/llama-server/models.ini", "--host", "127.0.0.1", "--port", "8000", "--offline"]

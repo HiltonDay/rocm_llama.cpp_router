@@ -1,21 +1,23 @@
 #!/usr/bin/env bash
 # run-server.sh - Launch llama.cpp router server with hardened isolation
 #
-# First run: remove --network-none to allow model downloads from Hugging Face.
-# Subsequent runs: use --network-none for full isolation (models are cached locally).
+# Uses --network host for localhost-only access (server binds to 127.0.0.1).
+# Models are pre-downloaded on host; --offline prevents any HF network calls.
 #
 # Per secure-opencode.md Phase 1:
 #   --read-only         : immutable container filesystem
-#   --network none      : no outbound connections (remove for first-run model download)
 #   --no-new-privileges : prevent privilege escalation
-#   models ro           : model files mounted read-only
-#   127.0.0.1           : bound to localhost only (0.0.0.0 is safe with --network none)
+#   HF cache readonly   : model files mounted read-only
+#   127.0.0.1           : bound to localhost only
 #
 set -euo pipefail
 
 IMAGE_NAME="llama-cpp-server"
 CONTAINER_NAME="llama-server"
-LOCAL_HF_HOME="$HOME/.cache/huggingface"
+HF_CACHE="${HF_CACHE_DIR:-$HOME/.cache/huggingface}"
+MODELS_DIR="${MODELS_DIR:-$HOME/models}"
+
+mkdir -p "$HF_CACHE" "$MODELS_DIR"
 
 # Clean up existing container if present
 if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
@@ -29,10 +31,12 @@ docker run -d \
   --security-opt no-new-privileges:true \
   --device /dev/kfd \
   --device /dev/dri \
-  --network none \
-  --mount type=bind,source="$LOCAL_HF_HOME",target=/huggingface,z \
+  --network host \
+  --mount type=bind,source="$HF_CACHE",target=/huggingface,readonly,z \
+  --mount type=bind,source="$MODELS_DIR",target=/models,readonly,z \
   "$IMAGE_NAME" \
   --models-preset /etc/llama-server/models.ini \
-  --host 0.0.0.0 \
+  --host 127.0.0.1 \
   --port 8000 \
+  --offline
   
