@@ -15,10 +15,7 @@ set -euo pipefail
 
 IMAGE_NAME="llama-cpp-server"
 CONTAINER_NAME="llama-server"
-HF_CACHE="${HF_CACHE_DIR:-$HOME/.cache/huggingface}"
-MODELS_DIR="${MODELS_DIR:-$HOME/models}"
-
-mkdir -p "$HF_CACHE" "$MODELS_DIR"
+LOCAL_HF_HOME="$HOME/.cache/huggingface"
 
 # Clean up existing container if present
 if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
@@ -33,10 +30,9 @@ docker run -d \
   --device /dev/kfd \
   --device /dev/dri \
   --network none \
-  --mount type=bind,source="$HF_CACHE",target=/huggingface,z \
-  --mount type=bind,source="$MODELS_DIR",target=/models,ro,z \
+  --mount type=bind,source="$LOCAL_HF_HOME",target=/huggingface,z \
   "$IMAGE_NAME" \
   --models-preset /etc/llama-server/models.ini \
   --host 0.0.0.0 \
   --port 8000 \
-  --offline
+  

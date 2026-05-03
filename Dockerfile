@@ -28,19 +28,15 @@ RUN HIPCXX="$(hipconfig -l)/clang" \
       -DLLAMA_OPENSSL=ON \
     && cmake --build build --config Release -j$(nproc)
 
-RUN cmake --install build --config Release
-
 RUN mkdir -p /usr/local/bin/llama \
     && cp build/bin/llama-server /usr/local/bin/llama/llama-server \
-    && cp build/bin/libllama*.so* /usr/local/bin/llama/ \
+    && find build -name "*.so*" -exec cp -P {} /usr/local/bin/llama/ \; \
     && rm -rf /llama.cpp
-
-RUN mkdir -p /models
 
 RUN pip install huggingface_hub hf_transfer \
     && pip cache purge
 
-ENV LD_LIBRARY_PATH=/usr/local/lib
+ENV LD_LIBRARY_PATH=/usr/local/lib:/usr/local/bin/llama
 ENV HF_HOME=/huggingface
 
 COPY models.ini /etc/llama-server/models.ini
@@ -49,9 +45,9 @@ COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 USER root
-WORKDIR /models
+WORKDIR /huggingface
 
 EXPOSE 8000
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-CMD ["--models-preset", "/etc/llama-server/models.ini", "--host", "0.0.0.0", "--port", "8000", "--offline"]
+CMD ["--models-preset", "/etc/llama-server/models.ini", "--host", "0.0.0.0", "--port", "8000"]
