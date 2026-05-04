@@ -53,4 +53,24 @@ WORKDIR /
 EXPOSE 8000
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-CMD ["--models-preset", "/etc/llama-server/models.ini", "--host", "127.0.0.1", "--port", "8000"]
+
+# ============================================================
+# STAGE 1 & 2: No CMD — arguments come from docker run
+# ============================================================
+# Stages 1 and 2 pass arguments via docker run command line.
+# No CMD needed — entrypoint.sh handles whatever is passed.
+
+# ============================================================
+# STAGE 3: Auto-start single model (uncomment for Stage 3)
+# ============================================================
+# CMD ["--model", "hf=unsloth/Qwen3.6-27B-GGUF:Q8_0", \
+#      "--host", "127.0.0.1", "--port", "8000", \
+#      "--ctx-size", "262144", "--flash-attn", \
+#      "--parallel", "3", "--temp", "0.6", "--top-p", "0.95", "--top-k", "20"]
+
+# ============================================================
+# STAGE 4: Router mode with models-preset (uncomment for Stage 4)
+# ============================================================
+# CMD ["--models-preset", "/etc/llama-server/models.ini", \
+#      "--models-max", "1", \
+#      "--host", "127.0.0.1", "--port", "8000"]

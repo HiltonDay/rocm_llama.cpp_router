@@ -17,6 +17,17 @@ Secure, multi-model inference server built on ROCm with llama.cpp router mode.
 - Docker or Podman installed
 - Models pre-downloaded to `~/.cache/huggingface/` (see below)
 
+## Stages
+
+The server progresses through four stages. All stages are present in the code from the start — progression happens by commenting/uncommenting marked sections. See `TEST_PLAYBOOK.md` for detailed verification at each stage.
+
+| Stage | Mode | How to run |
+|-------|------|-----------|
+| 1 | Interactive Debug | `./run-server.sh` (default) — drops to shell inside container |
+| 2 | Script-Initiated Server | Detached container, server started with --keep-alive |
+| 3 | Auto-Start Server | Detached container, server starts via Dockerfile CMD |
+| 4 | Production Router | Detached container, router mode with models-preset |
+
 ## Pre-download Models
 
 Download models before first run so the container can find them without network access:
@@ -47,11 +58,11 @@ podman build -t llama-cpp-server .
 ## Run
 
 ```bash
-# Docker
+# Default: Stage 1 interactive debug shell
 ./run-server.sh
-
-# Podman (use the Podman-compatible script below)
 ```
+
+The script defaults to Stage 1 (interactive debug). See `TEST_PLAYBOOK.md` for stage progression instructions and verification steps.
 
 ### Podman
 
