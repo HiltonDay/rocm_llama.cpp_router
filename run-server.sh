@@ -2,12 +2,11 @@
 # run-server.sh - Launch llama.cpp router server with hardened isolation
 #
 # Uses --network host for localhost-only access (server binds to 127.0.0.1).
-# Models are pre-downloaded on host; --offline prevents any HF network calls.
+# Models are pre-downloaded on host.
 #
 # Per secure-opencode.md Phase 1:
 #   --read-only         : immutable container filesystem
 #   --no-new-privileges : prevent privilege escalation
-#   HF cache readonly   : model files mounted read-only
 #   127.0.0.1           : bound to localhost only
 #
 set -euo pipefail
@@ -24,6 +23,8 @@ if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
   docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1
 fi
 
+# The Dockerfile CMD already provides --models-preset, --host, --port.
+# Pass no extra args so the image's built-in defaults are used.
 docker run -d \
   --name "$CONTAINER_NAME" \
   --read-only \
@@ -34,11 +35,6 @@ docker run -d \
   --group-add video \
   --group-add render \
   --network host \
-  --mount type=bind,source="$HF_CACHE",target=/huggingface,readonly,z \
+  --mount type=bind,source="$HF_CACHE",target=/huggingface,z \
   --mount type=bind,source="$MODELS_DIR",target=/models,readonly,z \
-  "$IMAGE_NAME" \
-  --models-preset /etc/llama-server/models.ini \
-  --host 127.0.0.1 \
-  --port 8000 \
-  --offline
-  
+  "$IMAGE_NAME"

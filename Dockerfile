@@ -46,11 +46,11 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 
 RUN groupadd -r video 2>/dev/null; groupadd -r render 2>/dev/null; \
     groupadd -r llama && \
-    useradd -r -g llama -G video,render -d /models -s /sbin/nologin llama
+    useradd -r -g llama -G video,render -d /models -s /bin/sh llama
 
 WORKDIR /
 
 EXPOSE 8000
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-CMD ["--models-preset", "/etc/llama-server/models.ini", "--host", "127.0.0.1", "--port", "8000", "--offline"]
+CMD ["--models-preset", "/etc/llama-server/models.ini", "--host", "127.0.0.1", "--port", "8000"]
