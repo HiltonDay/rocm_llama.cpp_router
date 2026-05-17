@@ -1,8 +1,9 @@
 #!/bin/bash
-podman run -d \
+docker run -it \
   --rm \
   --name rocm-llama \
   --network host \
+  --ipc=host \
   --device /dev/kfd \
   --device /dev/dri \
   --group-add video \

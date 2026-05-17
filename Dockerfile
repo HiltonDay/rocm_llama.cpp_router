@@ -37,15 +37,16 @@ RUN mkdir -p /usr/local/bin/llama \
 RUN pip install huggingface_hub hf_transfer \
     && pip cache purge
 
-ENV LD_LIBRARY_PATH=/usr/local/lib:/usr/local/bin/llama
-ENV HF_HOME=/huggingface
+ENV PATH=/opt/venv/bin:$PATH
+ENV LD_LIBRARY_PATH=/usr/local/bin/llama:$LD_LIBRARY_PATH
+ENV HF_HOME=/home/llama/.cache/huggingface
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 RUN groupadd -r video 2>/dev/null; groupadd -r render 2>/dev/null; \
     groupadd -r llama && \
-    useradd -r -g llama -G video,render -d /models -s /bin/sh llama
+    useradd -r -g llama -G video,render -d /models -s /bin/bash llama
 
 WORKDIR /
 
