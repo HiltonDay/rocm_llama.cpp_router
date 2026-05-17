@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     cmake \
     git \
     libssl-dev \
+    gosu \
     && rm -rf /var/lib/apt/lists/*
 
 RUN git clone https://github.com/ggml-org/llama.cpp.git /llama.cpp \
@@ -39,8 +40,6 @@ RUN pip install huggingface_hub hf_transfer \
 ENV LD_LIBRARY_PATH=/usr/local/lib:/usr/local/bin/llama
 ENV HF_HOME=/huggingface
 
-COPY models.ini /etc/llama-server/models.ini
-
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
@@ -54,23 +53,4 @@ EXPOSE 8000
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
-# ============================================================
-# STAGE 1 & 2: No CMD — arguments come from docker run
-# ============================================================
-# Stages 1 and 2 pass arguments via docker run command line.
-# No CMD needed — entrypoint.sh handles whatever is passed.
-
-# ============================================================
-# STAGE 3: Auto-start single model (uncomment for Stage 3)
-# ============================================================
-# CMD ["--model", "hf=unsloth/Qwen3.6-27B-GGUF:Q8_0", \
-#      "--host", "127.0.0.1", "--port", "8000", \
-#      "--ctx-size", "262144", "--flash-attn", \
-#      "--parallel", "3", "--temp", "0.6", "--top-p", "0.95", "--top-k", "20"]
-
-# ============================================================
-# STAGE 4: Router mode with models-preset (uncomment for Stage 4)
-# ============================================================
-# CMD ["--models-preset", "/etc/llama-server/models.ini", \
-#      "--models-max", "1", \
-#      "--host", "127.0.0.1", "--port", "8000"]
+CMD ["/usr/local/bin/llama/llama-server", "-fa", "1", "-ts", "9/16", "--hf-repo", "unsloth/Qwen3.6-27B-GGUF:Q8_0", "--temp", "0.6", "--top-p", "0.95", "--top-k", "20", "--min-p", "0.0", "--presence-penalty", "0.0", "--repeat-penalty", "1.0", "--ctx-size", "262144", "--host", "0.0.0.0", "--port", "8000"]
