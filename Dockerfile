@@ -44,6 +44,8 @@ ENV HF_HOME=/home/llama/.cache/huggingface
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
+COPY models.ini /etc/llama-server/models.ini
+
 RUN groupadd -r video 2>/dev/null; groupadd -r render 2>/dev/null; \
     groupadd -r llama && \
     useradd -r -g llama -G video,render -d /models -s /bin/bash llama
@@ -54,4 +56,4 @@ EXPOSE 8000
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
-CMD ["/usr/local/bin/llama/llama-server", "-fa", "1", "-ts", "9/16", "-ctk", "bf16", "-ctv", "bf16", "--hf-repo", "unsloth/Qwen3.6-27B-GGUF:Q8_0", "--temp", "0.6", "--top-p", "0.95", "--top-k", "20", "--min-p", "0.0", "--presence-penalty", "0.0", "--repeat-penalty", "1.0", "--ctx-size", "262144", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["/usr/local/bin/llama/llama-server", "--models-preset", "/etc/llama-server/models.ini", "--models-max", "1", "--host", "0.0.0.0", "--port", "8000"]

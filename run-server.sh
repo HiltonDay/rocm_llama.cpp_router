@@ -1,5 +1,5 @@
 #!/bin/bash
-docker run -it \
+docker run -d \
   --rm \
   --name rocm-llama \
   --network host \
