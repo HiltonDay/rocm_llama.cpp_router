@@ -1,6 +1,8 @@
 FROM docker.io/rocm/pytorch:rocm7.2.4_ubuntu24.04_py3.12_pytorch_release_2.10.0
 
-ARG LLAMA_CPP_COMMIT=9be313313c8ecb9488911bd64550190e3ed80f38
+# b10106 - latest stable release, includes MTP (merged b9235), multi-GPU layer split,
+# flash attention with rocWMMA, and all recent HIP/ROCm fixes for gfx1201
+ARG LLAMA_CPP_COMMIT=b10106
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libcurl4-openssl-dev \
@@ -16,7 +18,7 @@ RUN git clone https://github.com/ggml-org/llama.cpp.git /llama.cpp \
 
 WORKDIR /llama.cpp
 
-ENV LLAMACPP_ROCM_ARCH="gfx908,gfx1100"
+ENV LLAMACPP_ROCM_ARCH="gfx908,gfx1100,gfx1201"
 
 RUN cmake -S . -B build \
       -DCMAKE_C_COMPILER=/opt/rocm/llvm/bin/clang \

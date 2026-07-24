@@ -590,6 +590,138 @@ docker stop llama-server && docker rm llama-server
 
 ---
 
+## Use Case: Dual R9700 with Qwen3.6-27B (Tensor Split)
+
+This test validates the two R9700 GPUs (gfx1201) working together on the dense 27B model. Run from inside the interactive container after Stage 1 verification passes.
+
+### Prerequisites
+
+- Both R9700 GPUs visible in the container (check with step UC.1)
+- Qwen3.6-27B-GGUF:Q8_0 downloaded in HF cache
+- For MTP testing: Qwen3.6-27B-MTP-GGUF downloaded
+
+### UC.1 Verify both R9700s detected
+
+```bash
+/usr/local/bin/llama/llama-bench --list-devices
+```
+
+**Expected:** Two ROCm devices listed showing "gfx1201" with 32GB each. Note the device indices (e.g., ROCm0, ROCm1 or ROCm2, ROCm3 depending on enumeration order with other GPUs present).
+
+**If only one shows:** Check that both `--device /dev/kfd` and `--device /dev/dri` are passed, and both cards are physically seated correctly. Use `HIP_VISIBLE_DEVICES=2,3` (or appropriate indices) to select only the R9700s.
+
+### UC.2 Single R9700 baseline
+
+Run on one R9700 only to establish single-GPU baseline:
+
+```bash
+HIP_VISIBLE_DEVICES=<r9700_index_1> /usr/local/bin/llama/llama-bench \
+  -m hf=unsloth/Qwen3.6-27B-GGUF:Q8_0 \
+  -t 1 -ngl 99 -fa 1 \
+  -p 128,512,2048,8192 -n 128,512,2048 \
+  -b 16384 -ub 2048 -r 3
+```
+
+**Expected (approximate, HIP backend):**
+- pp2048: ~600-900 t/s
+- tg128: ~20-28 t/s
+
+Record actual values for comparison.
+
+### UC.3 Dual R9700 layer split (equal)
+
+Run across both R9700s with 50/50 split:
+
+```bash
+HIP_VISIBLE_DEVICES=<r9700_index_1>,<r9700_index_2> /usr/local/bin/llama/llama-bench \
+  -m hf=unsloth/Qwen3.6-27B-GGUF:Q8_0 \
+  -t 1 -ngl 99 -fa 1 -ts 1,1 \
+  -p 128,512,2048,8192,16384 -n 128,512,2048 \
+  -b 16384 -ub 2048 -r 3
+```
+
+**Expected:**
+- pp8192+: 35-80% faster than single GPU (prefill benefits from parallel)
+- tg128: 15-26% slower than single GPU (decode is bandwidth-bound, PCIe sync hurts)
+- Total model fits easily in 64GB combined VRAM
+
+**Key insight:** Dual-GPU is beneficial for long-context prefill but hurts single-token decode. For interactive use (chatting), single GPU is faster. For batch processing or long prompts, dual GPU wins.
+
+### UC.4 Dual R9700 with llama-server
+
+Start server using both R9700s:
+
+```bash
+HIP_VISIBLE_DEVICES=<r9700_index_1>,<r9700_index_2> \
+  /usr/local/bin/llama/llama-server \
+  --model hf=unsloth/Qwen3.6-27B-GGUF:Q8_0 \
+  --host 0.0.0.0 --port 8000 \
+  --ctx-size 131072 --flash-attn -ngl 99 \
+  --parallel 3 --kv-unified \
+  -ts 1,1
+```
+
+**Expected:** Server starts, detects both GPUs, loads model split across them. 131k context should fit comfortably in 64GB.
+
+From host:
+```bash
+curl http://localhost:8000/v1/models
+curl http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"unsloth/Qwen3.6-27B-GGUF:Q8_0","messages":[{"role":"user","content":"Write a haiku about GPUs"}]}'
+```
+
+**Expected:** Valid responses from both endpoints.
+
+### UC.5 MTP on dual R9700 (single-user mode)
+
+MTP requires `--parallel 1`. Test with MTP-enabled GGUF:
+
+```bash
+HIP_VISIBLE_DEVICES=<r9700_index_1>,<r9700_index_2> \
+  /usr/local/bin/llama/llama-server \
+  --model hf=unsloth/Qwen3.6-27B-MTP-GGUF:Q8_0 \
+  --host 0.0.0.0 --port 8000 \
+  --ctx-size 8192 --flash-attn -ngl 99 \
+  --parallel 1 \
+  --spec-type draft-mtp --spec-draft-n-max 2 \
+  -ts 1,1
+```
+
+**Expected:** ~1.5-2x decode speedup over non-MTP baseline. Acceptance rate 80-95%.
+
+**Note:** MTP and `--parallel > 1` are mutually exclusive. Choose MTP for single-user speed or parallel slots for multi-user serving.
+
+From host:
+```bash
+curl http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"unsloth/Qwen3.6-27B-MTP-GGUF:Q8_0","messages":[{"role":"user","content":"Explain tensor splitting in 3 sentences"}]}'
+```
+
+Check server logs for MTP acceptance rate and effective tokens/s.
+
+### UC.6 Benchmark comparison matrix
+
+After running UC.2-UC.5, fill in this table:
+
+| Config | PP2048 | TG128 | Notes |
+|--------|--------|-------|-------|
+| Single R9700 | — | — | Baseline |
+| Dual R9700 (ts 1,1) | — | — | Layer split |
+| Dual R9700 + MTP | — | — | spec-draft-n-max=2 |
+| All 4 GPUs (ts ?) | — | — | Future: full system |
+
+### Known Limitations
+
+- **MTP + parallel > 1:** Not supported. MTP requires `--parallel 1`.
+- **split-mode tensor:** Experimental, NOT supported for MoE architectures, requires non-quantized KV cache. Use default `--split-mode layer`.
+- **RCCL:** AMD's NCCL equivalent is disabled by default in llama.cpp ROCm builds ("not universally beneficial"). Don't expect NCCL-like gains from tensor parallelism.
+- **HIP vs Vulkan on RDNA4:** Vulkan/RADV is currently faster for decode on gfx1201. These Docker tests use HIP. For maximum single-GPU speed, also benchmark with a native Vulkan build on the host.
+- **PCIe ASPM:** Set to "performance" on the host for +10% dense decode: `echo performance | sudo tee /sys/module/pcie_aspm/parameters/policy`
+
+---
+
 ## Troubleshooting
 
 ### GPU Device Permission Errors

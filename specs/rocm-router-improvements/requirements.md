@@ -2,169 +2,168 @@
 
 ## Introduction
 
-This feature delivers a staged, iterative approach to building a Docker-based multi-model inference server using llama.cpp with ROCm (AMD GPU) support. The llama.cpp build and model configuration are proven working on a manually-built container using the same base image. All work is environmental — permissions, groups, filesystem mounts, environment variables, GPU device access, and container orchestration.
+Docker-based multi-model inference server using llama.cpp on AMD GPUs via ROCm HIP. The system runs on mixed-architecture multi-GPU setups and must compile for all GPU architectures present in the system.
 
-The four stages progress from interactive debugging through scripted startup to auto-start and finally production router mode. Each stage must be proven working before advancing. All stages produce documented manual test cases so a human operator can follow the process without AI assistance. Progression between stages is achieved by uncommenting pre-written code and scripts.
+The project has two phases:
+1. **Interactive Docker** — a working, debuggable container with GPU access where llama-server can be manually run, benchmarked, and tuned
+2. **Jukebox Mode** — automated router mode with models-preset for multi-model swap
+
+Phase 1 must be fully proven before Phase 2 begins.
+
+## Hardware Context
+
+### Target System (4 GPUs, 3 architectures)
+- GPU: AMD Instinct MI100 (gfx908, CDNA, 32GB)
+- GPU: AMD Radeon RX 7900 XTX (gfx1100, RDNA3, 24GB) — also drives display output
+- GPU: AMD Radeon AI PRO R9700 #1 (gfx1201, RDNA4, 32GB)
+- GPU: AMD Radeon AI PRO R9700 #2 (gfx1201, RDNA4, 32GB)
+- Total VRAM: ~120GB across 3 architectures (gfx908, gfx1100, gfx1201)
+- Host: Fedora 44, ROCm 7.2.2
+- Base image: `rocm/pytorch:rocm7.2.4_ubuntu24.04_py3.12_pytorch_release_2.10.0`
+- Build targets: `LLAMACPP_ROCM_ARCH="gfx908,gfx1100,gfx1201"`
+
+### Current Working Config (2 GPUs, R9700s not yet installed)
+- 7900 XTX (24GB, needs ~2GB for display) + MI100 (32GB)
+- Useable VRAM: ~52GB
+- Tensor-split: 5/8 or 9/16 (protects display GPU from OOM)
+- 256k context achieved with Qwen3.6-35B-A3B MoE Q8_0
+
+### R9700 Notes (gfx1201, RDNA4)
+- ROCm 7.2+ supports RDNA4 natively
+- Vulkan/RADV currently faster than HIP on RDNA4 for llama.cpp decode (Phoronix, Discussion #21043)
+- HIP build works and is improving with each ROCm release
+- MTP (multi-token prediction) provides ~2x decode speedup on supported models
+- PCIe ASPM=performance gives +10.8% dense decode
+- Key bench flags: `-b 16384 -ub 2048 -fa 1`
+
+### Proven Performance (current system, HIP, FA on, Q8_0, dual-GPU)
+
+| Model | PP2048 | TG128 | Notes |
+|-------|--------|-------|-------|
+| Qwen3.6-27B Q8_0 | 1172 t/s | 23.49 t/s | Dense, 26.62 GiB |
+| Qwen3.6-27B Q8_0 (ts 5/8) | 1102 t/s | 23.48 t/s | With tensor-split |
+| Qwen3.6-35B-A3B MoE Q8_0 | 1930 t/s | 62.12 t/s | MoE, 34.36 GiB |
+| gemma-4-31B-it Q8_0 | 857 t/s | 21.10 t/s | Dense, 30.38 GiB |
+| gemma-4-26B-A4B-it Q8_0 | 2280 t/s | 60.94 t/s | MoE, 25.00 GiB |
+| Llama-3.3-70B Q4_0 | 443 t/s | 17.37 t/s | Dense, 37.35 GiB |
+
+### Backend Decision: HIP
+
+The Docker image builds with GGML_HIP=ON because:
+- The base image (`rocm/pytorch`) provides the full HIP toolchain
+- HIP enables unified KV cache (`--kv-unified`), flash attention via rocWMMA
+- Multi-architecture builds (gfx908 + gfx1100 + gfx1201) work naturally
+- The current system already achieves good performance with HIP
+- For RDNA4 (gfx1201) specifically, Vulkan/RADV may be faster — users wanting maximum R9700 throughput should also try a native Vulkan build on the host
 
 ## Glossary
 
 - **Container**: The Docker container running the llama.cpp server image
-- **Image**: The Docker image built from the Dockerfile, containing the compiled llama-server binary and ROCm libraries
-- **Host**: The physical machine running Docker, with AMD GPUs and pre-downloaded models
-- **llama-server**: The llama.cpp HTTP inference server binary, compiled with ROCm/HIP support
-- **Router_Mode**: llama-server operating as a model dispatcher using --models-preset, loading and unloading models on request
-- **ROCm**: AMD's open-source GPU compute platform (Radeon Open Compute)
-- **HIP**: AMD's GPU programming interface used by ROCm, analogous to CUDA
-- **GPU_Devices**: The /dev/kfd and /dev/dri device nodes required for ROCm GPU access
-- **HF_Cache**: The HuggingFace model cache directory on the host (~/.cache/huggingface/), bind-mounted into the container
-- **Models_INI**: The INI configuration file (/etc/llama-server/models.ini) defining per-model settings for router mode
-- **Run_Script**: The shell script (run-server.sh) that launches the container with security hardening flags
-- **Entrypoint**: The container entrypoint script that sets up XDG directories, drops privileges, and executes llama-server
-- **Llama_User**: The non-root user (llama) inside the container, member of video and render groups for GPU access
-- **Debug_Shell**: An interactive shell session inside the container running as Llama_User with all environment variables set
-- **Stage_Gate**: A documented set of manual verification steps that must all pass before progressing to the next stage
-- **Test_Playbook**: A complete set of console commands and expected outputs documenting how to verify each stage
+- **Image**: The Docker image built from the Dockerfile
+- **Host**: The physical machine running Fedora 44 with AMD GPUs and ROCm 7.2.2
+- **llama-server**: The llama.cpp HTTP inference server binary compiled with HIP
+- **Jukebox Mode**: llama-server operating as a model dispatcher using --models-preset (swap models on demand)
+- **ROCm**: AMD's open-source GPU compute platform (7.2.2 on host, 7.2.4 in container)
+- **HIP**: AMD's GPU programming interface (analogous to CUDA)
+- **gfx908**: GPU architecture for MI100 (CDNA, Wave Size 64)
+- **gfx1100**: GPU architecture for 7900 XTX (RDNA3, Wave Size 32)
+- **gfx1201**: GPU architecture for R9700 (RDNA4, Wave Size 32) — planned addition
+- **GPU_Devices**: /dev/kfd and /dev/dri device nodes required for ROCm GPU access
+- **HF_Cache**: HuggingFace model cache directory on the host (~/.cache/huggingface/)
+- **Models_INI**: INI configuration file defining per-model settings for jukebox mode
+- **tensor-split**: Ratio controlling how model layers are distributed across GPUs (e.g., 5/8 or 9/16)
+- **kv-unified**: Flag enabling unified KV cache across GPU devices
+- **MTP**: Multi-Token Prediction — speculative decoding using model's built-in prediction heads (~2x on R9700)
 
 ## Requirements
 
-### Requirement 1: Docker Image Build
+### Requirement 1: Docker Image Build with gfx1201 Support
 
-**User Story:** As a developer, I want to build the Docker image with ROCm support and llama.cpp compiled for my GPU architectures, so that I have a working base image for all subsequent stages.
-
-#### Acceptance Criteria
-
-1. WHEN the Dockerfile is built, THE Image SHALL compile llama-server from the pinned commit (63d93d17336e41e4cc73a64451e5b1d2477abdb1) with GGML_HIP=ON targeting gfx908 and gfx1100 architectures
-2. WHEN the Dockerfile is built, THE Image SHALL create Llama_User with membership in the video and render groups
-3. WHEN the Dockerfile is built, THE Image SHALL install the llama-server binary at /usr/local/bin/llama/llama-server with all required shared libraries in the same directory
-4. WHEN the Dockerfile is built, THE Image SHALL copy Models_INI to /etc/llama-server/models.ini
-5. WHEN the Dockerfile is built, THE Image SHALL set LD_LIBRARY_PATH to include /usr/local/bin/llama and HF_HOME to /huggingface
-6. IF the Docker build fails, THEN THE Image SHALL produce a build log identifying the failing step and error message
-
-### Requirement 2: Stage 1 — Interactive Debug Image
-
-**User Story:** As a developer, I want to log into the container as Llama_User with all environment variables set and GPU access available, so that I can manually start llama-server and debug the environment before automating anything.
+**User Story:** As a developer with R9700 GPUs, I want to build the Docker image targeting gfx1201 (RDNA4) so that llama-server uses my GPU architecture natively.
 
 #### Acceptance Criteria
 
-1. WHEN Run_Script launches the Container in Stage 1 mode, THE Container SHALL start with an interactive shell as Llama_User instead of auto-starting llama-server
-2. WHILE the Container is running in Stage 1 mode, THE Container SHALL have /dev/kfd and /dev/dri device nodes accessible to Llama_User
-3. WHILE the Container is running in Stage 1 mode, THE Container SHALL have Llama_User as a member of the video and render groups with confirmed group membership via the `id` command
-4. WHILE the Container is running in Stage 1 mode, THE Container SHALL have HF_Cache bind-mounted at /huggingface with read access for Llama_User
-5. WHILE the Container is running in Stage 1 mode, THE Container SHALL have the models directory bind-mounted at /models with read-only access for Llama_User
-6. WHILE the Container is running in Stage 1 mode, THE Container SHALL have XDG_CACHE_HOME, XDG_CONFIG_HOME, and XDG_DATA_HOME set to writable directories under /tmp
-7. WHILE the Container is running in Stage 1 mode, THE Container SHALL have LD_LIBRARY_PATH set to include /usr/local/bin/llama so that llama-server can locate its shared libraries
-8. WHEN Llama_User manually invokes llama-server with a model path, THE llama-server SHALL detect and use the AMD GPU devices
-9. WHEN Llama_User manually invokes llama-server with a model from HF_Cache, THE llama-server SHALL load the model into GPU VRAM and respond to HTTP requests on the specified port
-10. THE Test_Playbook for Stage 1 SHALL document console commands to verify: GPU device access, environment variables, file permissions on model mounts, HF_Cache read access, library paths, group membership, and manual llama-server invocation
+1. WHEN the Dockerfile is built, THE Image SHALL compile llama-server with GGML_HIP=ON and GGML_HIP_ROCWMMA_FATTN=ON targeting gfx1201 (primary), with gfx908 and gfx1100 as additional targets
+2. WHEN the Dockerfile is built, THE Image SHALL use a ROCm 7.2.4+ base image that includes RDNA4 support
+3. WHEN the Dockerfile is built, THE Image SHALL create a non-root user (llama) with membership in the video and render groups
+4. WHEN the Dockerfile is built, THE Image SHALL install llama-server and llama-bench binaries with all required shared libraries
+5. WHEN the Dockerfile is built, THE Image SHALL set LD_LIBRARY_PATH, HF_HOME, and PATH appropriately
+6. WHEN the Dockerfile is built, THE Image SHALL include huggingface_hub and hf_transfer for model management
+7. WHEN the Dockerfile is built, THE Image SHALL track llama.cpp master (latest commit at build time) unless a specific commit is pinned for stability
 
-### Requirement 3: Stage 2 — Script-Initiated Server with Debug Access
+### Requirement 2: Interactive Docker (Phase 1)
 
-**User Story:** As a developer, I want Run_Script to start llama-server on container launch while retaining the ability to exec into the running container for debugging, so that I can verify the server runs correctly under scripted conditions.
+**User Story:** As a developer, I want to log into the container with full GPU access and all environment variables set, so that I can manually start llama-server, run llama-bench, and debug the environment.
 
 #### Acceptance Criteria
 
-1. WHEN Run_Script launches the Container in Stage 2 mode, THE Run_Script SHALL start llama-server via a startup command passed to the container, binding to 127.0.0.1 on port 8000
-2. WHILE the Container is running in Stage 2 mode, THE Container SHALL allow a developer to exec into the running container as Llama_User with all environment variables preserved
-3. WHILE the Container is running in Stage 2 mode, THE Container SHALL expose llama-server logs accessible via `docker logs`
-4. WHEN a developer execs into the running Container, THE Debug_Shell SHALL have access to commands for checking: folder permissions, environment variables, GPU device status, server process status, and memory allocations
-5. WHILE the Container is running in Stage 2 mode, THE Container SHALL maintain the same security hardening as Stage 1: read-only filesystem, tmpfs at /tmp, no-new-privileges, and non-root execution
-6. WHEN llama-server is started by Run_Script, THE llama-server SHALL accept HTTP requests at http://127.0.0.1:8000/v1/models and return a valid response
-7. IF llama-server fails to start, THEN THE Container SHALL remain running so the developer can exec in and diagnose the failure
-8. THE Test_Playbook for Stage 2 SHALL document console commands to verify: server process status, log inspection, HTTP endpoint responses, GPU memory usage, folder permissions, environment variables, and exec-based debugging
+1. WHEN the interactive script launches the Container, THE Container SHALL start with a bash shell with GPU access available
+2. WHILE the Container is running, THE Container SHALL have /dev/kfd and /dev/dri accessible with correct group permissions
+3. WHILE the Container is running, THE Container SHALL have HF_Cache mounted (read-write) so models are accessible
+4. WHILE the Container is running, THE llama user SHALL have confirmed membership in video and render groups (verifiable via `id` command)
+5. WHILE the Container is running, THE Container SHALL have llama-server and llama-bench on PATH and functional
+6. WHEN the user manually invokes llama-server with a model, THE server SHALL detect and use the R9700 GPU(s)
+7. WHEN the user runs llama-bench, THE benchmark SHALL execute against the GPU and report results
+8. WHILE the Container is running, THE Container SHALL support both single-GPU and dual-GPU configurations via HIP_VISIBLE_DEVICES or tensor-split flags
+9. THE interactive container SHALL allow the user to test PCIe ASPM settings, MTP flags, and batch tuning parameters documented in the performance notes
 
-### Requirement 4: Stage 3 — Auto-Start Server Image
+### Requirement 3: Dual-GPU Configuration
 
-**User Story:** As a developer, I want the Docker image to auto-start llama-server via ENTRYPOINT/CMD when the container starts, so that the server runs automatically on container start/stop without manual intervention.
-
-#### Acceptance Criteria
-
-1. WHEN the Container starts in Stage 3 mode, THE Entrypoint SHALL automatically drop privileges to Llama_User and start llama-server with the configured arguments
-2. WHEN the Container starts in Stage 3 mode, THE llama-server SHALL bind to 127.0.0.1 on port 8000 using --network host
-3. WHILE the Container is running in Stage 3 mode, THE Container SHALL be stoppable via `docker stop` and restartable via `docker start` with llama-server resuming automatically
-4. WHILE the Container is running in Stage 3 mode, THE Container SHALL allow exec-based debug access as Llama_User
-5. WHILE the Container is running in Stage 3 mode, THE Container SHALL maintain all security hardening: read-only filesystem, tmpfs at /tmp, no-new-privileges, non-root execution, and read-only model mounts
-6. WHEN the Container is started with `docker run`, THE Entrypoint SHALL set up XDG directories under /tmp before starting llama-server
-7. IF llama-server exits unexpectedly, THEN THE Container SHALL stop with a non-zero exit code visible via `docker inspect`
-8. THE Test_Playbook for Stage 3 SHALL document console commands to verify: automatic server startup, stop/start cycle, HTTP endpoint availability after restart, log inspection, and exec-based debugging
-
-### Requirement 5: Stage 4 — Production Router Mode
-
-**User Story:** As a developer, I want llama-server to run in router mode with models-preset, supporting dynamic model loading and unloading, so that chat interfaces and tools can switch between models and the server handles load/unload automatically.
+**User Story:** As a developer with two R9700 GPUs, I want the container to support multi-GPU inference so that I can use both cards for larger models or faster prefill.
 
 #### Acceptance Criteria
 
-1. WHEN the Container starts in Stage 4 mode, THE llama-server SHALL start in Router_Mode using --models-preset pointing to Models_INI
-2. WHEN the Container starts in Stage 4 mode, THE llama-server SHALL use --models-max 1 to load one model at a time in swap mode
-3. WHEN a client sends a chat completion request specifying a model name, THE llama-server SHALL load the requested model if it is not already loaded, unloading the current model first if necessary
-4. WHEN a model swap occurs, THE llama-server SHALL complete the swap within the expected timeframe (approximately 3-10 seconds depending on model size)
-5. WHEN the Container starts in Stage 4 mode, THE llama-server SHALL respond to GET /v1/models with a list of all models defined in Models_INI
-6. WHEN a client sends a chat completion request for a model not defined in Models_INI, THE llama-server SHALL return an appropriate error response
-7. WHILE the Container is running in Stage 4 mode, THE Container SHALL maintain all security hardening from Stage 3
-8. WHEN the first model specified with load-on-startup = true in Models_INI is requested, THE llama-server SHALL load that model on the first request or at startup depending on --models-autoload configuration
-9. THE Test_Playbook for Stage 4 SHALL document console commands to verify: model listing, chat completion with each model, model swap behaviour, swap timing, error handling for unknown models, and concurrent request behaviour during swap
+1. WHEN both GPUs are passed to the Container, THE llama-server SHALL detect both devices
+2. WHEN tensor-split is configured, THE llama-server SHALL distribute model layers across GPUs according to the specified ratio
+3. THE models.ini SHALL include tensor-split configuration appropriate for dual R9700 (equal split: 0.5/0.5 or memory-based)
+4. THE documentation SHALL note that dual-GPU decode is slower than single-GPU for bandwidth-bound models, and describe when dual-GPU is beneficial (long-context prefill, larger models that don't fit in 32GB)
 
-### Requirement 6: Staged Progression Mechanism
+### Requirement 4: Jukebox Mode (Phase 2 — Router)
 
-**User Story:** As a developer, I want all code and scripts for later stages to be present but commented out from the start, so that I can progress between stages by uncommenting code rather than writing new code.
+**User Story:** As a developer, I want llama-server to run in router mode with models-preset, supporting dynamic model loading and unloading, so that chat interfaces can switch between models automatically.
 
 #### Acceptance Criteria
 
-1. THE Dockerfile SHALL contain commented-out sections for Stage 3 and Stage 4 ENTRYPOINT/CMD configurations, with clear comments indicating which stage each section belongs to
-2. THE Run_Script SHALL contain commented-out sections for each stage's docker run invocation, with clear comments indicating which stage each section belongs to and instructions for switching
-3. THE Entrypoint SHALL contain commented-out sections for Stage 2 server startup logic and Stage 4 router mode arguments, with clear comments indicating which stage each section belongs to
-4. WHEN a developer uncomments the Stage N sections and comments out the Stage N-1 sections, THE system SHALL function correctly for Stage N without additional code changes
-5. THE Run_Script SHALL include inline comments documenting the purpose of each security flag and mount option
+1. WHEN the Container starts in Jukebox mode, THE llama-server SHALL start using --models-preset pointing to Models_INI with --models-max 1
+2. WHEN a client requests a model not currently loaded, THE llama-server SHALL unload the current model and load the requested one
+3. WHEN the Container starts, THE llama-server SHALL respond to GET /v1/models with all models defined in Models_INI
+4. WHEN a model swap occurs, THE swap SHALL complete within expected timeframe (3-10 seconds depending on model size)
+5. THE Container SHALL maintain security hardening: read-only filesystem, tmpfs at /tmp, no-new-privileges, localhost binding
+6. THE Container SHALL be manageable via start/stop scripts
+7. THE models.ini SHALL be configurable for the user's specific models and GPU memory constraints
 
-### Requirement 7: Test Playbook Documentation
+### Requirement 5: Security Hardening
 
-**User Story:** As a developer, I want complete manual test documentation for every stage, so that someone can follow the verification process without AI assistance.
-
-#### Acceptance Criteria
-
-1. THE Test_Playbook SHALL be a single document covering all four stages with clear stage boundaries
-2. THE Test_Playbook for each stage SHALL list every console command needed for verification, with the expected output or success criteria for each command
-3. THE Test_Playbook SHALL include a pre-flight checklist covering: host prerequisites (ROCm driver, Docker, GPU devices), model pre-download verification, and image build verification
-4. THE Test_Playbook SHALL include troubleshooting guidance for common failures: GPU device permission errors, library path issues, mount permission errors, and port binding failures
-5. WHEN a Stage_Gate verification step fails, THE Test_Playbook SHALL provide diagnostic commands to identify the root cause
-6. THE Test_Playbook SHALL document the exact commands to progress from one stage to the next (which lines to comment/uncomment in which files)
-
-### Requirement 8: ROCm GPU Access Configuration
-
-**User Story:** As a developer, I want the container to have correct GPU device access and group membership, so that llama-server can use the AMD GPUs for inference.
+**User Story:** As a developer, I want the container to follow defense-in-depth principles with minimal attack surface.
 
 #### Acceptance Criteria
 
-1. WHEN Run_Script launches the Container, THE Run_Script SHALL pass --device /dev/kfd and --device /dev/dri to expose GPU devices to the container
-2. WHEN Run_Script launches the Container, THE Run_Script SHALL pass --group-add video and --group-add render to grant GPU access groups to the container process
-3. WHILE the Container is running, THE Llama_User SHALL have effective membership in the video and render groups as confirmed by the `id` command
-4. WHILE the Container is running, THE Llama_User SHALL have read-write access to /dev/kfd and /dev/dri device nodes
-5. IF GPU_Devices are not accessible inside the Container, THEN THE Test_Playbook SHALL provide diagnostic commands to check: device node existence, device permissions, group membership, and ROCm driver status on the Host
+1. WHEN run-server.sh launches the Container, THE script SHALL use --read-only, tmpfs at /tmp, --security-opt no-new-privileges
+2. WHEN run-server.sh launches the Container, THE script SHALL bind llama-server to 127.0.0.1 (localhost only) unless explicitly overridden
+3. WHEN run-server.sh launches the Container, THE script SHALL mount model directories read-only where possible
+4. THE entrypoint SHALL drop privileges appropriately when running llama-server
+5. THE interactive container MAY relax read-only filesystem for debugging convenience (tmpfs still applies)
 
-### Requirement 9: Security Hardening
+### Requirement 6: Performance Tuning Documentation
 
-**User Story:** As a developer, I want the container to follow defense-in-depth security principles, so that the inference server runs with minimal attack surface.
-
-#### Acceptance Criteria
-
-1. WHEN Run_Script launches the Container, THE Run_Script SHALL use --read-only to make the container filesystem immutable
-2. WHEN Run_Script launches the Container, THE Run_Script SHALL mount a tmpfs at /tmp with rw,noexec,nosuid permissions and a size limit of 64MB
-3. WHEN Run_Script launches the Container, THE Run_Script SHALL use --security-opt no-new-privileges:true to prevent privilege escalation
-4. WHEN Run_Script launches the Container, THE Run_Script SHALL use --network host with llama-server bound to 127.0.0.1 to restrict access to localhost only
-5. WHEN Run_Script launches the Container, THE Run_Script SHALL mount HF_Cache with the z SELinux label for shared access
-6. WHEN Run_Script launches the Container, THE Run_Script SHALL mount the models directory as read-only with the z SELinux label
-7. THE Entrypoint SHALL drop all inheritable capabilities via setpriv --inh-caps=-all when executing llama-server
-8. THE Entrypoint SHALL use setpriv with --init-groups to rebuild supplementary groups from /etc/group for GPU access
-
-### Requirement 10: Filesystem Mount Configuration
-
-**User Story:** As a developer, I want the host model cache and models directory correctly mounted into the container, so that llama-server can access pre-downloaded models without network access.
+**User Story:** As a developer, I want documented performance tuning guidance for R9700 GPUs so that I can get maximum throughput from my hardware.
 
 #### Acceptance Criteria
 
-1. WHEN Run_Script launches the Container, THE Run_Script SHALL bind-mount the host HF_Cache directory (defaulting to $HOME/.cache/huggingface) to /huggingface inside the Container
-2. WHEN Run_Script launches the Container, THE Run_Script SHALL bind-mount the host models directory (defaulting to $HOME/models) to /models inside the Container as read-only
-3. WHILE the Container is running, THE Llama_User SHALL have read access to GGUF model files within /huggingface
-4. WHILE the Container is running, THE Llama_User SHALL have read access to files within /models
-5. IF the host HF_Cache directory does not exist, THEN THE Run_Script SHALL create it before launching the Container
-6. IF the host models directory does not exist, THEN THE Run_Script SHALL create it before launching the Container
-7. WHILE the Container is running with a read-only filesystem, THE Container SHALL have writable tmpfs at /tmp for XDG directories and temporary files needed by llama-server
+1. THE documentation SHALL include PCIe ASPM performance mode instructions and expected gains
+2. THE documentation SHALL include optimal llama-bench flags for R9700 (-b 16384 -ub 2048 -fa 1)
+3. THE documentation SHALL note that Vulkan/RADV currently outperforms HIP on RDNA4 with links to benchmarks
+4. THE documentation SHALL include MTP (multi-token prediction) usage for supported models
+5. THE documentation SHALL include dual-GPU tensor-split recommendations and the decode vs prefill tradeoff
+6. THE documentation SHALL reference the llama.cpp Discussion #21043 and community optimization findings
+
+### Requirement 7: Test Verification
+
+**User Story:** As a developer, I want documented verification steps so that I can confirm the system works without AI assistance.
+
+#### Acceptance Criteria
+
+1. THE project SHALL include a TEST_PLAYBOOK.md with pre-flight checks and verification commands
+2. THE playbook SHALL cover: GPU detection, environment variables, model loading, HTTP API, benchmarking
+3. THE playbook SHALL include troubleshooting for common failures (GPU permissions, library paths, model not found, OOM)
+4. THE playbook SHALL be executable by following commands sequentially without external knowledge

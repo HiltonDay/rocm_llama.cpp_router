@@ -1,575 +1,232 @@
-# Design Document: ROCm Router Improvements
+# Design Document: ROCm Docker for R9700 (gfx1201)
 
 ## Overview
 
-This design delivers a staged, iterative Docker-based multi-model inference server using llama.cpp with ROCm (AMD GPU) support. The approach restructures three existing files (Dockerfile, run-server.sh, entrypoint.sh) and adds one new file (TEST_PLAYBOOK.md) so that all four stages are present from the start — progression happens by commenting/uncommenting clearly marked sections, not by writing new code.
+Docker-based llama.cpp inference server targeting a 4-GPU mixed-architecture system:
+- AMD Instinct MI100 (gfx908, CDNA, 32GB)
+- AMD Radeon RX 7900 XTX (gfx1100, RDNA3, 24GB)
+- 2x AMD Radeon AI PRO R9700 (gfx1201, RDNA4, 32GB each)
 
-The four stages are:
+Total: ~120GB VRAM, 3 architectures. Two phases:
 
-1. **Interactive Debug Image** — shell access, manual server start, environment verification
-2. **Script-Initiated Server** — run-script starts server, debug exec preserved
-3. **Auto-Start Server** — ENTRYPOINT/CMD auto-launch, stop/start cycle
-4. **Production Router Mode** — models-preset, dynamic model swap between multiple models
+1. **Interactive Docker** — working container with GPU access for manual server operation, benchmarking, and tuning
+2. **Jukebox Mode** — automated router mode with models-preset
 
-The llama.cpp build and model configuration are proven working. All work is environmental: permissions, groups, filesystem mounts, environment variables, GPU device access, and container orchestration.
+The existing codebase has a working Dockerfile, entrypoint, and scripts proven on the 2-GPU config (MI100 + 7900 XTX). Changes needed:
+- Add gfx1201 to AMDGPU_TARGETS
+- Verify 4-GPU detection and tensor-split across 3 architectures
+- Restructure scripts to support interactive-first workflow
+- Add performance tuning documentation
+- Prepare jukebox mode (router) as Phase 2
 
 ### Key Design Decisions
 
-1. **Single-file stage progression**: Each file contains all stages with comment blocks. No separate files per stage, no build arguments, no environment variable switches. The mechanism is human-readable commenting/uncommenting.
+1. **HIP build, not Vulkan**: The Docker image builds with GGML_HIP=ON because the ROCm base image provides the full HIP toolchain. Vulkan (RADV) is currently faster on RDNA4 for llama.cpp decode, but requires host-side Mesa/RADV drivers rather than container-side support. Users wanting Vulkan should build llama.cpp natively on the host. The HIP path provides a self-contained Docker experience.
 
-2. **Dockerfile uses ENTRYPOINT + CMD split**: ENTRYPOINT always points to entrypoint.sh. CMD varies by stage. Stage 1-2 override CMD via docker run arguments. Stage 3-4 use the built-in CMD.
+2. **gfx1201 as additional target**: Build targets `gfx908,gfx1100,gfx1201` to cover all cards. More targets = longer compile. Users can trim to their hardware.
 
-3. **entrypoint.sh is stage-aware via arguments**: It doesn't need internal stage logic. The CMD/arguments passed to it determine behaviour — `--shell` for debug, explicit llama-server args for Stage 2, built-in CMD for Stage 3-4.
+3. **Interactive-first**: The default launch is an interactive shell, not a detached server. This matches the development workflow: verify GPU access → run benchmarks → tune parameters → only then automate.
 
-4. **run-server.sh contains all docker run variants**: Four commented blocks, one per stage. Each block is self-contained with all flags documented.
+4. **gosu for privilege management**: Current entrypoint uses gosu, which is simpler than setpriv for the container use case. Keep it.
 
-5. **Test playbook is a single document**: Covers pre-flight, all four stages, troubleshooting, and stage progression instructions. Each stage has numbered verification steps with exact commands and expected outputs.
-
-6. **Security hardening is consistent across all stages**: read-only filesystem, tmpfs at /tmp, no-new-privileges, localhost binding, capability dropping, SELinux labels. Stage 1 relaxes only what's needed for interactive debugging.
+5. **Dual-GPU aware but not dual-GPU default**: Models.ini includes tensor-split for multi-GPU. Interactive mode lets users experiment with different splits manually — especially important with 4 GPUs across 3 architectures where optimal split isn't obvious.
 
 ## Architecture
 
 ### File Structure
 
 ```
-research/rocm_llama.cpp_router/
-├── Dockerfile              # Multi-stage build, commented CMD sections per stage
-├── entrypoint.sh           # Privilege drop, XDG setup, shell/server/router dispatch
-├── run-server.sh           # Container launch with 4 commented docker run blocks
-├── models.ini              # Router mode model configuration (unchanged)
-├── TEST_PLAYBOOK.md        # Complete manual verification for all stages
-├── .dockerignore            # Build context exclusions (unchanged)
-├── README.md               # Project overview (updated for stage documentation)
-└── LICENSE                  # License file (unchanged)
+rocm_docker/
+├── Dockerfile              # Build image with HIP for gfx1201, gfx908, gfx1100
+├── entrypoint.sh           # Privilege drop, XDG/cache setup, exec
+├── run-server.sh           # Detached jukebox mode (Phase 2)
+├── interactive-server.sh   # Interactive shell with GPU access (Phase 1)
+├── stop-server.sh          # Stop the detached server
+├── models.ini              # Router mode model configuration
+├── TEST_PLAYBOOK.md        # Verification procedures
+├── README.md               # Project overview + performance tuning
+├── .dockerignore           # Build context exclusions
+└── LICENSE                 # License
 ```
 
-### Stage Progression Flow
+### Phase 1: Interactive Docker Flow
 
-```mermaid
-graph TD
-    A[Build Image] --> B[Stage 1: Interactive Debug]
-    B -->|Verify GPU, env, mounts| C{Stage Gate 1 Pass?}
-    C -->|Yes| D[Stage 2: Script-Initiated Server]
-    C -->|No| B
-    D -->|Verify server, logs, HTTP| E{Stage Gate 2 Pass?}
-    E -->|Yes| F[Stage 3: Auto-Start Server]
-    E -->|No| D
-    F -->|Verify auto-start, stop/start| G{Stage Gate 3 Pass?}
-    G -->|Yes| H[Stage 4: Production Router]
-    G -->|No| F
-    H -->|Verify model list, swap, timing| I{Stage Gate 4 Pass?}
-    I -->|No| H
-    I -->|Yes| J[Production Ready]
+```
+User runs ./interactive-server.sh
+  → docker run -it with GPU devices, HF cache mount
+  → entrypoint.sh sets up cache dirs, drops to llama user
+  → User gets bash shell inside container
+  → User manually runs: llama-server, llama-bench, environment checks
+  → User tunes parameters, tests models
+  → User exits (container removed due to --rm)
+```
+
+### Phase 2: Jukebox Mode Flow
+
+```
+User runs ./run-server.sh
+  → docker run -d with GPU devices, HF cache mount, security hardening
+  → entrypoint.sh sets up cache, execs llama-server with router args
+  → llama-server starts in --models-preset mode
+  → Serves OpenAI-compatible API on localhost:8000
+  → Models swap on demand (--models-max 1)
+User runs ./stop-server.sh to terminate
 ```
 
 ### Container Architecture
 
-```mermaid
-graph LR
-    subgraph Host
-        HF[~/.cache/huggingface] 
-        MD[~/models]
-        KFD[/dev/kfd]
-        DRI[/dev/dri]
-    end
-
-    subgraph Container
-        EP[entrypoint.sh]
-        LS[llama-server]
-        TMP[/tmp tmpfs 64MB]
-        
-        subgraph Mounts
-            HFM[/huggingface rw]
-            MDM[/models ro]
-        end
-        
-        subgraph User
-            LU[llama user]
-            VG[video group]
-            RG[render group]
-        end
-    end
-
-    HF -->|bind mount, z label| HFM
-    MD -->|bind mount, ro, z label| MDM
-    KFD -->|--device| Container
-    DRI -->|--device| Container
-    EP -->|setpriv drop privs| LS
-    LU -->|member of| VG
-    LU -->|member of| RG
+```
+Host                              Container
+─────                             ─────────
+/dev/kfd, /dev/dri   ──────────→  GPU access (--device)
+~/.cache/huggingface ──────────→  /tmp/huggingface (bind mount, rw)
+                                  
+                                  /usr/local/bin/llama/
+                                    ├── llama-server
+                                    ├── llama-bench
+                                    └── *.so (shared libs)
+                                  
+                                  /etc/llama-server/models.ini
+                                  
+                                  User: llama (video, render groups)
+                                  Cache: /tmp/.cache/llama.cpp
 ```
 
-## Components and Interfaces
+## Components
 
 ### Component 1: Dockerfile
 
-The Dockerfile is the image build definition. It compiles llama-server with ROCm/HIP support and sets up the container environment.
+**Current state**: Working build targeting gfx908, gfx1100 on ROCm 7.2.4 base image.
 
-**Current state**: Working build with a single ENTRYPOINT + CMD for router mode (Stage 4).
-
-**Target state**: Same build process, but the final section has commented blocks for each stage's CMD configuration.
-
-#### Dockerfile Structure
+**Changes needed**:
+- Add `gfx1201` to LLAMACPP_ROCM_ARCH
+- Keep GGML_HIP_ROCWMMA_FATTN=ON (benefits RDNA3+ and CDNA)
+- Keep current binary layout (/usr/local/bin/llama/)
+- Keep current user setup (llama with video, render groups)
 
 ```dockerfile
-# ============================================================
-# BUILD SECTION (unchanged — proven working)
-# ============================================================
-FROM rocm/pytorch:rocm7.2.2_ubuntu24.04_py3.12_pytorch_release_2.10.0
-# ... compile llama-server, install deps, copy binaries ...
-
-# ============================================================
-# USER AND GROUP SETUP (unchanged)
-# ============================================================
-# ... create llama user with video,render groups ...
-
-# ============================================================
-# COPY CONFIGURATION FILES
-# ============================================================
-COPY models.ini /etc/llama-server/models.ini
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
-
-# ============================================================
-# ENTRYPOINT (constant across all stages)
-# ============================================================
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-
-# ============================================================
-# STAGE 1 & 2: No CMD — arguments come from docker run
-# ============================================================
-# Stages 1 and 2 pass arguments via docker run command line.
-# No CMD needed — entrypoint.sh handles whatever is passed.
-
-# ============================================================
-# STAGE 3: Auto-start single model (uncomment for Stage 3)
-# ============================================================
-# CMD ["--model", "hf=unsloth/Qwen3.6-27B-GGUF:Q8_0", \
-#      "--host", "127.0.0.1", "--port", "8000", \
-#      "--ctx-size", "262144", "--flash-attn", \
-#      "--parallel", "3", "--temp", "0.6", "--top-p", "0.95", "--top-k", "20"]
-
-# ============================================================
-# STAGE 4: Router mode with models-preset (uncomment for Stage 4)
-# ============================================================
-# CMD ["--models-preset", "/etc/llama-server/models.ini", \
-#      "--models-max", "1", \
-#      "--host", "127.0.0.1", "--port", "8000"]
+ENV LLAMACPP_ROCM_ARCH="gfx908,gfx1100,gfx1201"
 ```
 
-**Design rationale**: 
-- ENTRYPOINT is constant — it always runs entrypoint.sh which handles privilege dropping and XDG setup.
-- Stages 1-2 don't need a CMD because docker run passes the arguments directly.
-- Stages 3-4 use CMD so the container auto-starts without arguments.
-- Only one CMD block should be uncommented at a time. The Dockerfile's last CMD wins, so the active stage must be the last uncommented CMD.
+The CMD remains the jukebox mode command. The interactive script overrides via --entrypoint.
 
-### Component 2: entrypoint.sh
+### Component 2: interactive-server.sh
 
-The entrypoint script handles privilege dropping, XDG directory setup, and dispatching to either a debug shell or llama-server.
+**Current state**: Working — launches bash with --entrypoint /bin/bash override.
 
-**Current state**: Working — handles `--shell` for debug and defaults to llama-server with passed arguments.
+**Changes needed**:
+- Already functional as-is
+- Consider adding `--read-only` with `--tmpfs /tmp` for consistency with production
+- May keep without --read-only for debugging convenience (write to /tmp is sufficient)
+- Current form is fine for Phase 1
 
-**Target state**: Minimal changes. Add a `--keep-alive` mode for Stage 2 (container stays running if server fails) and ensure router mode arguments pass through cleanly.
+### Component 3: run-server.sh (Phase 2)
 
-#### entrypoint.sh Structure
+**Current state**: Detached launch with read-only filesystem and security hardening.
+
+**Changes needed**:
+- Update image name to match build tag
+- Add documentation about security flags
+- Ensure it passes GPU devices correctly for dual-GPU
+- Bind to 127.0.0.1 (currently uses --network host, server CMD has --host 0.0.0.0)
+
+**Issue**: Current CMD uses `--host 0.0.0.0` which exposes on all interfaces. With `--network host` this means the server is accessible from the network. Should be changed to `127.0.0.1` for localhost-only access.
+
+### Component 4: entrypoint.sh
+
+**Current state**: Minimal — creates cache dir, chowns, execs gosu llama with passed command.
+
+**Adequate for both phases**. Interactive mode passes `/bin/bash`, jukebox mode passes the llama-server command via CMD.
+
+### Component 5: models.ini
+
+**Current state**: Configured for 4 models with tensor-split=9,16 and kv-unified=true.
+
+**Changes needed**:
+- Document what tensor-split=9,16 means (split ratio across two GPUs)
+- Consider whether kv-unified=true is appropriate for gfx1201 (it's a newer feature)
+- Values look correct for dual R9700 setup
+
+### Component 6: TEST_PLAYBOOK.md
+
+**Current state**: Exists but may need updating.
+
+**Content needed**:
+- Pre-flight: GPU detection, driver version, model availability
+- Phase 1 verification: interactive shell checks
+- Phase 2 verification: jukebox mode API tests
+- Performance tuning checklist
+- Troubleshooting
+
+## Performance Tuning Notes (for documentation)
+
+### Current System Performance (MI100 + 7900 XTX, HIP, FA on)
+
+Proven benchmarks from the working 2-GPU setup:
+- Qwen3.6-35B-A3B MoE Q8_0: 1930 t/s pp, 62 t/s tg — excellent for MoE
+- Qwen3.6-27B Q8_0 (ts 5/8): 1102 t/s pp, 23.5 t/s tg — dense, bandwidth-bound
+- 256k context with `--parallel 3 --kv-unified -ts 5/8`
+
+### R9700 (gfx1201) — Community Benchmarks (Vulkan/RADV)
+
+From llama.cpp Discussion #21043:
+- Qwen3.5-27B Q4_K_M: ~29 t/s decode (RADV stock), ~32.5 t/s with ASPM fix
+- Qwen3.5-35B-A3B MoE Q4_K_XL: ~148-156 t/s decode, 3074 t/s pp2048 with -ub 2048
+- MTP on Qwen3.6-27B: 44-48 t/s (from ~20 t/s base) — ~2x boost
+
+### 4-GPU Considerations
+
+When all 4 cards are installed:
+- Tensor-split ratio needs benchmarking (3 different memory bandwidths, 3 architectures)
+- The 7900 XTX still needs display reservation (~2GB)
+- PCIe topology will determine inter-GPU communication overhead
+- May benefit from running separate instances per GPU pair rather than one 4-GPU split
+- Llama.cpp multi-GPU uses layer-wise splitting — uneven architectures means the slowest GPU is the bottleneck for TG
+
+### Host-Side Optimizations (not container-managed)
 
 ```bash
-#!/bin/sh
-set -e
+# PCIe ASPM — +10.8% dense decode on RADV, may help HIP too
+echo "performance" | sudo tee /sys/module/pcie_aspm/parameters/policy
 
-# ============================================================
-# XDG BASE DIRECTORY SETUP
-# All under /tmp for read-only filesystem compatibility
-# ============================================================
-mkdir -p /tmp/llama-cache /tmp/llama-config /tmp/llama-data
-chmod 1777 /tmp/llama-cache /tmp/llama-config /tmp/llama-data
-
-export XDG_CACHE_HOME=/tmp/llama-cache
-export XDG_CONFIG_HOME=/tmp/llama-config
-export XDG_DATA_HOME=/tmp/llama-data
-
-# ============================================================
-# STAGE 1: Interactive debug shell
-# If first argument is --shell, sh, or bash, drop to shell as llama user
-# Usage: docker run ... <image> --shell
-# ============================================================
-if [ "${1:-}" = "--shell" ] || [ "${1:-}" = "sh" ] || [ "${1:-}" = "bash" ]; then
-    exec setpriv --reuid=$(id -u llama) --regid=$(id -g llama) --init-groups --inh-caps=-all \
-        "$@"
-fi
-
-# ============================================================
-# STAGE 2: Keep-alive mode (uncomment for Stage 2)
-# Server runs in background; container stays alive for exec debugging
-# If server crashes, container remains running for diagnosis
-# Usage: docker run ... <image> --keep-alive <server-args...>
-# ============================================================
-# if [ "${1:-}" = "--keep-alive" ]; then
-#     shift  # remove --keep-alive from args
-#     setpriv --reuid=$(id -u llama) --regid=$(id -g llama) --init-groups --inh-caps=-all \
-#         /usr/local/bin/llama/llama-server "$@" &
-#     SERVER_PID=$!
-#     echo "llama-server started as PID $SERVER_PID"
-#     # Wait for server; if it exits, sleep forever so container stays up for debugging
-#     wait $SERVER_PID || true
-#     echo "llama-server exited (PID $SERVER_PID). Container staying alive for debugging."
-#     echo "Exec in with: docker exec -it <container> /usr/local/bin/entrypoint.sh --shell"
-#     tail -f /dev/null
-# fi
-
-# ============================================================
-# STAGE 3 & 4: Default — drop to llama user and run llama-server
-# Arguments come from CMD (Stage 3/4) or docker run (Stage 2 without keep-alive)
-# --init-groups rebuilds supplementary groups from /etc/group (video, render)
-# --inh-caps=-all drops all inheritable capabilities
-# ============================================================
-exec setpriv --reuid=$(id -u llama) --regid=$(id -g llama) --init-groups --inh-caps=-all \
-    /usr/local/bin/llama/llama-server "$@"
+# GPU performance mode — stable clocks
+echo high | sudo tee /sys/class/drm/card*/device/power_dpm_force_performance_level
 ```
 
-**Design rationale**:
-- Stage 1 (`--shell`): Already working. No changes needed.
-- Stage 2 (`--keep-alive`): Runs server in background, waits for it, then keeps container alive if it crashes. This satisfies Requirement 3.7 (container remains running for diagnosis).
-- Stage 3-4 (default `exec`): Already working. CMD arguments pass through cleanly. Router mode args (`--models-preset`, `--models-max`) are just more arguments to llama-server.
-
-### Component 3: run-server.sh
-
-The run script launches the container with all security hardening flags and bind mounts.
-
-**Current state**: Single docker run command for router mode.
-
-**Target state**: Four commented docker run blocks, one per stage. Each block is self-contained and fully documented.
-
-#### run-server.sh Structure
+### llama-bench Recommended Flags
 
 ```bash
-#!/usr/bin/env bash
-# run-server.sh — Launch llama.cpp server container
-#
-# STAGE PROGRESSION:
-#   1. Uncomment the desired stage's docker run block
-#   2. Comment out all other stage blocks
-#   3. Run this script
-#
-# Security hardening (all stages):
-#   --read-only           : immutable container filesystem
-#   --tmpfs /tmp          : writable temp with noexec,nosuid,64MB limit
-#   --no-new-privileges   : prevent privilege escalation via setuid/setgid
-#   --network host        : use host network (server binds to 127.0.0.1)
-#   --device /dev/kfd     : AMD GPU kernel fusion driver
-#   --device /dev/dri     : AMD GPU direct rendering interface
-#   --group-add video     : GPU access group
-#   --group-add render    : GPU render group
-#   ,z SELinux label      : shared mount label for SELinux hosts
-#
-set -euo pipefail
-
-IMAGE_NAME="llama-cpp-server"
-CONTAINER_NAME="llama-server"
-HF_CACHE="${HF_CACHE_DIR:-$HOME/.cache/huggingface}"
-MODELS_DIR="${MODELS_DIR:-$HOME/models}"
-
-mkdir -p "$HF_CACHE" "$MODELS_DIR"
-
-# Clean up existing container if present
-if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-  docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1
-fi
-
-# ============================================================
-# STAGE 1: Interactive Debug Image
-# Starts an interactive shell as llama user.
-# Manually start llama-server from inside the container.
-# ============================================================
-docker run -it \
-  --name "$CONTAINER_NAME" \
-  --read-only \
-  --tmpfs /tmp:rw,noexec,nosuid,size=64m \
-  --security-opt no-new-privileges:true \
-  --device /dev/kfd \
-  --device /dev/dri \
-  --group-add video \
-  --group-add render \
-  --network host \
-  --mount type=bind,source="$HF_CACHE",target=/huggingface,z \
-  --mount type=bind,source="$MODELS_DIR",target=/models,readonly,z \
-  "$IMAGE_NAME" \
-  --shell
-
-# ============================================================
-# STAGE 2: Script-Initiated Server with Debug Access
-# Server starts via --keep-alive; container stays up if server crashes.
-# Debug with: docker exec -it llama-server /usr/local/bin/entrypoint.sh --shell
-# ============================================================
-# docker run -d \
-#   --name "$CONTAINER_NAME" \
-#   --read-only \
-#   --tmpfs /tmp:rw,noexec,nosuid,size=64m \
-#   --security-opt no-new-privileges:true \
-#   --device /dev/kfd \
-#   --device /dev/dri \
-#   --group-add video \
-#   --group-add render \
-#   --network host \
-#   --mount type=bind,source="$HF_CACHE",target=/huggingface,z \
-#   --mount type=bind,source="$MODELS_DIR",target=/models,readonly,z \
-#   "$IMAGE_NAME" \
-#   --keep-alive \
-#   --model hf=unsloth/Qwen3.6-27B-GGUF:Q8_0 \
-#   --host 127.0.0.1 --port 8000 \
-#   --ctx-size 262144 --flash-attn \
-#   --parallel 3 --temp 0.6 --top-p 0.95 --top-k 20
-
-# ============================================================
-# STAGE 3: Auto-Start Server Image
-# Server starts automatically via Dockerfile CMD.
-# No extra arguments needed — CMD provides them.
-# Debug with: docker exec -it llama-server /usr/local/bin/entrypoint.sh --shell
-# ============================================================
-# docker run -d \
-#   --name "$CONTAINER_NAME" \
-#   --read-only \
-#   --tmpfs /tmp:rw,noexec,nosuid,size=64m \
-#   --security-opt no-new-privileges:true \
-#   --device /dev/kfd \
-#   --device /dev/dri \
-#   --group-add video \
-#   --group-add render \
-#   --network host \
-#   --mount type=bind,source="$HF_CACHE",target=/huggingface,z \
-#   --mount type=bind,source="$MODELS_DIR",target=/models,readonly,z \
-#   "$IMAGE_NAME"
-
-# ============================================================
-# STAGE 4: Production Router Mode
-# Server starts in router mode via Dockerfile CMD.
-# Uses --models-preset for multi-model swap.
-# No extra arguments needed — CMD provides them.
-# Debug with: docker exec -it llama-server /usr/local/bin/entrypoint.sh --shell
-# ============================================================
-# docker run -d \
-#   --name "$CONTAINER_NAME" \
-#   --read-only \
-#   --tmpfs /tmp:rw,noexec,nosuid,size=64m \
-#   --security-opt no-new-privileges:true \
-#   --device /dev/kfd \
-#   --device /dev/dri \
-#   --group-add video \
-#   --group-add render \
-#   --network host \
-#   --mount type=bind,source="$HF_CACHE",target=/huggingface,z \
-#   --mount type=bind,source="$MODELS_DIR",target=/models,readonly,z \
-#   "$IMAGE_NAME"
+llama-bench -m MODEL.gguf -t 1 -ngl 99 -fa 1 \
+  -p 128,512,2048,8192 -n 128,512,2048 \
+  -b 16384 -ub 2048 -r 3
 ```
 
-**Design rationale**:
-- Stage 1 uses `docker run -it` (interactive + tty) with `--shell` argument. This is the only stage that runs interactively.
-- Stages 2-4 use `docker run -d` (detached). Logs via `docker logs`.
-- Stage 2 passes `--keep-alive` plus explicit server arguments. The entrypoint runs the server in background and keeps the container alive on failure.
-- Stages 3 and 4 pass no extra arguments — the Dockerfile CMD provides them. The docker run blocks are identical; the difference is which CMD is uncommented in the Dockerfile.
-- Every flag is documented in the header comment.
+### MTP (Multi-Token Prediction)
 
-### Component 4: TEST_PLAYBOOK.md
-
-A single document covering pre-flight checks, all four stages, troubleshooting, and stage progression instructions.
-
-#### Test Playbook Structure
-
-```
-TEST_PLAYBOOK.md
-├── Pre-Flight Checklist
-│   ├── Host prerequisites (ROCm driver, Docker, GPU devices)
-│   ├── Model pre-download verification
-│   └── Image build verification
-├── Stage 1: Interactive Debug Image
-│   ├── Launch container
-│   ├── Verify GPU device access
-│   ├── Verify environment variables
-│   ├── Verify group membership
-│   ├── Verify file permissions on mounts
-│   ├── Verify library paths
-│   ├── Manual llama-server invocation
-│   ├── Manual HTTP test
-│   └── Stage Gate 1 checklist
-├── Stage 2: Script-Initiated Server
-│   ├── Progression instructions (comment/uncomment)
-│   ├── Launch container
-│   ├── Verify server process
-│   ├── Verify logs
-│   ├── Verify HTTP endpoints
-│   ├── Exec-based debugging
-│   ├── Verify GPU memory usage
-│   └── Stage Gate 2 checklist
-├── Stage 3: Auto-Start Server
-│   ├── Progression instructions (comment/uncomment)
-│   ├── Rebuild image (uncomment CMD)
-│   ├── Launch container
-│   ├── Verify automatic startup
-│   ├── Stop/start cycle test
-│   ├── Verify HTTP after restart
-│   ├── Exec-based debugging
-│   └── Stage Gate 3 checklist
-├── Stage 4: Production Router Mode
-│   ├── Progression instructions (comment/uncomment)
-│   ├── Rebuild image (uncomment router CMD)
-│   ├── Launch container
-│   ├── Verify model listing
-│   ├── Chat completion with startup model
-│   ├── Model swap test
-│   ├── Swap timing measurement
-│   ├── Error handling for unknown model
-│   ├── Concurrent request during swap
-│   └── Stage Gate 4 checklist
-└── Troubleshooting
-    ├── GPU device permission errors
-    ├── Library path issues
-    ├── Mount permission errors
-    ├── Port binding failures
-    ├── Server crash diagnosis
-    └── Model loading failures
-```
-
-Each verification step follows this format:
-
-```markdown
-### Step N.M: Description
-
-**Command:**
+For models with MTP support (e.g., `unsloth/Qwen3.6-27B-MTP-GGUF`):
 ```bash
-<exact command to run>
+llama-server --model hf=unsloth/Qwen3.6-27B-MTP-GGUF:Q4_K_M \
+  --draft-n-max 3 --draft-min 1
 ```
-
-**Expected output:**
-```
-<what success looks like — exact text or pattern>
-```
-
-**If it fails:**
-<diagnostic command and what to look for>
-```
-
-### Component 5: models.ini (Unchanged)
-
-The models.ini file is already correctly configured for router mode. No changes needed. It defines:
-- Global defaults in `[*]` section: flash-attn, parallel, tensor-split, cache types
-- Per-model sections with HuggingFace paths, context sizes, and sampling parameters
-- `load-on-startup = true` on the Qwen3.6-27B model
-
-### Component Interaction by Stage
-
-| Stage | run-server.sh | entrypoint.sh | Dockerfile CMD | Result |
-|-------|--------------|---------------|----------------|--------|
-| 1 | `docker run -it ... --shell` | Detects `--shell`, execs shell as llama | None needed | Interactive shell |
-| 2 | `docker run -d ... --keep-alive --model ...` | Detects `--keep-alive`, runs server in bg, stays alive on crash | None needed | Detached server + debug access |
-| 3 | `docker run -d ...` (no extra args) | Default path: execs llama-server with CMD args | `--model hf=... --host ... --port ...` | Auto-start single model |
-| 4 | `docker run -d ...` (no extra args) | Default path: execs llama-server with CMD args | `--models-preset ... --models-max 1 --host ... --port ...` | Auto-start router mode |
-
-## Data Models
-
-Not applicable — this feature involves Docker configuration, shell scripts, and documentation. There are no data models, database schemas, or persistent data structures.
-
-The only structured data is models.ini, which is an INI configuration file already defined and working. Its schema is dictated by llama.cpp's `--models-preset` parser:
-
-```ini
-version = 1
-
-[*]                          # Global defaults applied to all models
-flash-attn = 1               # Enable flash attention
-parallel = 3                 # Parallel request slots
-tensor-split = 12/19         # GPU memory split ratio
-cache-type-k = bf16          # Key cache type
-cache-type-v = bf16          # Value cache type
-
-[model-name:quantization]    # Per-model section (HuggingFace repo:quant format)
-hf = <repo>:<quant>          # HuggingFace model path
-load-on-startup = true       # Optional: load when server starts
-ctx-size = <int>             # Context window size
-temp = <float>               # Sampling temperature
-top-p = <float>              # Top-p sampling
-top-k = <int>                # Top-k sampling
-```
+Expected: ~2x decode speedup with 85-95% acceptance rate.
 
 ## Error Handling
 
-### Container Build Errors
-
 | Error | Cause | Resolution |
 |-------|-------|------------|
-| CMake HIP detection fails | ROCm base image version mismatch or missing HIP tools | Verify base image tag matches ROCm version. Check `hipconfig -l` and `hipconfig -R` exist in base image |
-| llama-server compile fails | Pinned commit incompatible with ROCm version | Check llama.cpp release notes for ROCm compatibility. Update commit hash if needed |
-| Group creation fails | video/render groups already exist in base image | The `2>/dev/null` on groupadd handles this — not a real error |
-
-### Container Runtime Errors
-
-| Error | Cause | Resolution |
-|-------|-------|------------|
-| `/dev/kfd: Permission denied` | Missing `--device /dev/kfd` or user not in video group | Check `docker run` flags. Verify `--group-add video` and `--group-add render` |
-| `libhiprtc.so: cannot open shared object` | LD_LIBRARY_PATH not set or missing libraries | Verify `LD_LIBRARY_PATH` includes `/usr/local/bin/llama`. Check library files exist |
-| `bind: Address already in use` | Port 8000 already occupied on host | Stop existing process on port 8000: `lsof -i :8000` |
-| `read-only file system` | Attempting to write outside /tmp | Verify tmpfs mount at /tmp. Check XDG vars point to /tmp subdirectories |
-| Model file not found | HF_Cache not mounted or model not pre-downloaded | Verify mount: `ls /huggingface/hub/`. Pre-download models on host |
-| Server exits immediately | Missing GPU, wrong architecture, or model too large for VRAM | Check `docker logs`. Verify GPU architecture matches `LLAMACPP_ROCM_ARCH` |
-
-### Stage 2 Specific: Keep-Alive Behaviour
-
-When `--keep-alive` is active and llama-server crashes:
-1. The entrypoint catches the exit via `wait $SERVER_PID || true`
-2. Prints diagnostic message to stdout (visible in `docker logs`)
-3. Runs `tail -f /dev/null` to keep container alive indefinitely
-4. Developer can exec in to diagnose: `docker exec -it llama-server /usr/local/bin/entrypoint.sh --shell`
-
-### Stage 4 Specific: Router Mode Errors
-
-| Error | Cause | Resolution |
-|-------|-------|------------|
-| Model not found in preset | Request specifies model name not in models.ini | llama-server returns HTTP 404 or error JSON. Check model names match INI section headers exactly |
-| Swap timeout | Model too large or GPU memory fragmentation | Check `docker logs` for unload/load timing. Restart container to clear VRAM |
-| Out of VRAM during swap | Previous model not fully unloaded before new model loads | `--models-max 1` ensures sequential unload/load. If persists, reduce ctx-size |
+| `/dev/kfd: Permission denied` | Missing --device or user not in video group | Check --device and --group-add flags |
+| `hipErrorNoBinaryForGpu` | Binary not compiled for this GPU arch | Verify gfx1201 in LLAMACPP_ROCM_ARCH, rebuild |
+| `cannot open shared object file` | LD_LIBRARY_PATH wrong | Check /usr/local/bin/llama/ has .so files |
+| Model not found | HF cache not mounted or wrong path | Verify -v mount and HF_HOME env var |
+| OOM / VRAM exhausted | Model + KV cache exceeds 32GB | Reduce --ctx-size, use lower quant, or enable dual-GPU split |
+| Port already in use | Another process on 8000 | `lsof -i :8000` on host |
 
 ## Testing Strategy
 
-### Why Property-Based Testing Does Not Apply
+Manual verification via TEST_PLAYBOOK.md. No automated tests — the system requires real GPU hardware. The playbook provides exact commands with expected outputs for:
 
-This feature consists entirely of:
-- **Dockerfile** — declarative infrastructure configuration
-- **Shell scripts** — side-effect-only operations (launching containers, mounting devices, dropping privileges)
-- **INI configuration** — static configuration consumed by llama-server
-- **Documentation** — prose test playbook
-
-There are no pure functions, data transformations, parsers, serializers, or business logic to property-test. The "inputs" are host environment state (GPU devices, file permissions, group membership) and the "outputs" are container runtime behaviour (process status, HTTP responses, log content). These are integration-level concerns best verified by manual execution against real hardware.
-
-### Testing Approach: Manual Test Playbook
-
-The primary testing mechanism is TEST_PLAYBOOK.md — a structured document of exact console commands with expected outputs. This is appropriate because:
-
-1. **Hardware dependency**: Every test requires a physical AMD GPU with ROCm drivers. No meaningful mocking is possible.
-2. **Environment verification**: Tests check real device nodes, real group membership, real filesystem permissions.
-3. **Sequential stage gates**: Each stage must pass before the next begins. This is inherently a manual, sequential process.
-4. **Observable outputs**: Success/failure is determined by command output, HTTP responses, and log content — all directly observable.
-
-### Test Categories
-
-| Category | What it verifies | How |
-|----------|-----------------|-----|
-| **Pre-flight** | Host prerequisites exist | Shell commands checking device nodes, Docker version, model files |
-| **Environment** | Container internals are correct | `id`, `env`, `ls -la` inside container |
-| **Functional** | Server starts and responds | `curl` to HTTP endpoints, response validation |
-| **Security** | Hardening flags are effective | Verify read-only FS, check capabilities, confirm non-root |
-| **Stage gate** | All criteria for a stage pass | Checklist of pass/fail items |
-| **Troubleshooting** | Diagnose common failures | Diagnostic commands with interpretation guidance |
-
-### Test Execution
-
-Tests are executed manually by a human operator following TEST_PLAYBOOK.md. The playbook is designed to be:
-- **Self-contained**: No external knowledge required beyond the playbook itself
-- **Sequential**: Steps within a stage are ordered and depend on prior steps
-- **Diagnostic**: Every step includes failure guidance
-- **Reproducible**: Exact commands, no ambiguity
-
-### Unit Tests and Integration Tests
-
-No automated unit tests or integration tests are included in this design. The rationale:
-
-- **No testable code units**: Shell scripts are thin wrappers around Docker and setpriv. Testing them in isolation would require mocking Docker, the filesystem, and GPU devices — producing tests that verify mocks, not reality.
-- **Integration is the test**: The entire purpose of each stage is to verify that the real environment works. The test playbook IS the integration test suite, executed by a human against real hardware.
-- **CI/CD consideration**: If automated CI is desired in the future, the pre-flight and environment checks could be scripted as a smoke test suite. This is out of scope for the current design.
+1. GPU detection and architecture confirmation
+2. Environment and permission verification
+3. Model loading and inference
+4. Benchmark execution
+5. API endpoint testing (Phase 2)
