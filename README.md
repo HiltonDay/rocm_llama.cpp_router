@@ -39,7 +39,7 @@ The GPU indices below use the validated ROCm enumeration: physical device 0 is a
 
 ### Two R9700s: tensor-parallel mode, 256k context
 
-Use physical devices 0 and 3. Inside the container they become logical GPUs 0 and 1. The equal tensor split assigns the model across both cards:
+Use physical devices 0 and 3. Inside the container they become logical GPUs 0 and 1. The 256k configuration uses 16-bit FP16 KV cache:
 
 ```bash
 # Host: start an interactive container with only the two R9700s visible.
@@ -55,10 +55,25 @@ llama-server \
   --tensor-split 1,1 \
   --ctx-size 262144 \
   --flash-attn on \
+  --cache-type-k f16 \
+  --cache-type-v f16 \
   --host 127.0.0.1 \
   --port 8000 \
   -ngl all
 ```
+
+Native MTP is optional. To enable the embedded MTP branch with draft depth 3, add these parameters to the command above:
+
+```text
+--spec-type draft-mtp
+--spec-draft-n-max 3
+--spec-draft-type-k f16
+--spec-draft-type-v f16
+--parallel 1
+--no-cache-prompt
+```
+
+The optional MTP parameters use the same 16-bit FP16 KV cache at 256k context. Q8 KV can reduce memory use if FP16 KV does not fit; use `--cache-type-k q8_0 --cache-type-v q8_0` and matching `--spec-draft-type-k q8_0 --spec-draft-type-v q8_0` as the fallback.
 
 ### RX 7900 XTX and MI100: layer-split mode, 200k context
 
@@ -72,14 +87,14 @@ HIP_VISIBLE_DEVICES=1,2 ./interactive-server.sh --detach
 docker exec -it --user llama rocm-llama-interactive /bin/bash
 
 # Container: start Qwen3.8-27B with layer splitting and 200k context.
-llama-server \\
-  --hf-repo unsloth/Qwen3.8-27B-GGUF \\
-  --split-mode layer \\
-  --tensor-split 1,1 \\
-  --ctx-size 204800 \\
-  --flash-attn on \\
-  --host 127.0.0.1 \\
-  --port 8000 \\
+llama-server \
+  --hf-repo unsloth/Qwen3.8-27B-GGUF \
+  --split-mode layer \
+  --tensor-split 1,1 \
+  --ctx-size 204800 \
+  --flash-attn on \
+  --host 127.0.0.1 \
+  --port 8000 \
   -ngl all
 ```
 

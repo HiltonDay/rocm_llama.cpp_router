@@ -50,7 +50,7 @@ The validated ROCm device order is physical device 0=R9700, 1=MI100, 2=RX 7900 X
 
 ### Two R9700s: tensor-parallel mode with 256k context
 
-Select physical devices 0 and 3. The selected cards become logical GPUs 0 and 1, and `--split-mode tensor` enables the parallelized tensor split:
+Select physical devices 0 and 3. The selected cards become logical GPUs 0 and 1, and `--split-mode tensor` enables the parallelized tensor split. The 256k configuration uses 16-bit FP16 KV cache:
 
 ```bash
 # Host terminal, from rocm_docker/.
@@ -58,16 +58,31 @@ HIP_VISIBLE_DEVICES=0,3 ./interactive-server.sh --detach
 docker exec -it --user llama rocm-llama-interactive /bin/bash
 
 # Inside the container.
-llama-server \\
-  --hf-repo unsloth/Qwen3.8-27B-GGUF \\
-  --split-mode tensor \\
-  --tensor-split 1,1 \\
-  --ctx-size 262144 \\
-  --flash-attn on \\
-  --host 127.0.0.1 \\
-  --port 8000 \\
+llama-server \
+  --hf-repo unsloth/Qwen3.8-27B-GGUF \
+  --split-mode tensor \
+  --tensor-split 1,1 \
+  --ctx-size 262144 \
+  --flash-attn on \
+  --cache-type-k f16 \
+  --cache-type-v f16 \
+  --host 127.0.0.1 \
+  --port 8000 \
   -ngl all
 ```
+
+Native MTP is optional. Add these parameters to the command above to enable the embedded MTP branch with draft depth 3:
+
+```text
+--spec-type draft-mtp
+--spec-draft-n-max 3
+--spec-draft-type-k f16
+--spec-draft-type-v f16
+--parallel 1
+--no-cache-prompt
+```
+
+The optional MTP parameters use the same 16-bit FP16 KV cache at 256k context. Q8 KV can reduce memory use if FP16 KV does not fit; use `--cache-type-k q8_0 --cache-type-v q8_0` and matching `--spec-draft-type-k q8_0 --spec-draft-type-v q8_0` as the fallback.
 
 ### RX 7900 XTX and MI100: layer-split mode with 200k context
 
@@ -79,14 +94,14 @@ HIP_VISIBLE_DEVICES=1,2 ./interactive-server.sh --detach
 docker exec -it --user llama rocm-llama-interactive /bin/bash
 
 # Inside the container.
-llama-server \\
-  --hf-repo unsloth/Qwen3.8-27B-GGUF \\
-  --split-mode layer \\
-  --tensor-split 1,1 \\
-  --ctx-size 204800 \\
-  --flash-attn on \\
-  --host 127.0.0.1 \\
-  --port 8000 \\
+llama-server \
+  --hf-repo unsloth/Qwen3.8-27B-GGUF \
+  --split-mode layer \
+  --tensor-split 1,1 \
+  --ctx-size 204800 \
+  --flash-attn on \
+  --host 127.0.0.1 \
+  --port 8000 \
   -ngl all
 ```
 
