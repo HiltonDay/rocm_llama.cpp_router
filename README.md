@@ -49,20 +49,20 @@ HIP_VISIBLE_DEVICES=0,3 ./interactive-server.sh --detach
 docker exec -it --user llama rocm-llama-interactive /bin/bash
 
 # Container: start Qwen3.8-27B with tensor parallelism and 256k context.
-llama-server \\
-  --hf-repo unsloth/Qwen3.8-27B-GGUF \\
-  --split-mode tensor \\
-  --tensor-split 1,1 \\
-  --ctx-size 262144 \\
-  --flash-attn on \\
-  --host 127.0.0.1 \\
-  --port 8000 \\
+llama-server \
+  --hf-repo unsloth/Qwen3.8-27B-GGUF \
+  --split-mode tensor \
+  --tensor-split 1,1 \
+  --ctx-size 262144 \
+  --flash-attn on \
+  --host 127.0.0.1 \
+  --port 8000 \
   -ngl all
 ```
 
-### RX 7900 XTX and MI100: row-split mode, 200k context
+### RX 7900 XTX and MI100: layer-split mode, 200k context
 
-Use physical devices 1 and 2. They become logical GPUs 0 and 1, with the MI100 as logical GPU 0 and the row-mode main GPU. The equal row split uses both cards:
+Use physical devices 1 and 2. They become logical GPUs 0 and 1. Row splitting was tested but is not supported by the MI100 path in this image (`device ROCm0 does not support split buffers`), so this workflow uses the compatible layer split:
 
 ```bash
 # Host: start an interactive container with only the MI100 and RX 7900 XTX visible.
@@ -71,12 +71,11 @@ HIP_VISIBLE_DEVICES=1,2 ./interactive-server.sh --detach
 # Host: open a Bash console.
 docker exec -it --user llama rocm-llama-interactive /bin/bash
 
-# Container: start Qwen3.8-27B with row splitting and 200k context.
+# Container: start Qwen3.8-27B with layer splitting and 200k context.
 llama-server \\
   --hf-repo unsloth/Qwen3.8-27B-GGUF \\
-  --split-mode row \\
+  --split-mode layer \\
   --tensor-split 1,1 \\
-  --main-gpu 0 \\
   --ctx-size 204800 \\
   --flash-attn on \\
   --host 127.0.0.1 \\
