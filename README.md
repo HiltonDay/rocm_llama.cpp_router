@@ -1,15 +1,44 @@
 # ROCm llama.cpp container
 
-This directory builds and runs `llama-server` and `llama-bench` for AMD GPUs through ROCm HIP. The current image is based on ROCm 7.2.4 and compiles llama.cpp commit `b10106` for `gfx908`, `gfx1100`, and `gfx1201`.
+This directory builds and runs `llama-server` and `llama-bench` for AMD GPUs through ROCm HIP. The current image is based on ROCm 7.14 and compiles llama.cpp commit `9723942adc518b43c4b95dc4dce6906903eb5e09` for `gfx908`, `gfx1100`, and `gfx1201`.
 
 The operational guide uses `unsloth/Qwen3.5-2B-GGUF` for small smoke tests. The router configuration contains larger models for normal use; loading those models needs the available VRAM and can take longer.
+
+## Quick start: interactive Qwen3.8-27B
+
+Run these commands from `rocm_docker/`. The first command starts a detached interactive container using the persistent `rocm-llama-home` volume. The second opens a Bash console in that container. Run the third command inside the container:
+
+```bash
+# 1. Launch the container in the background.
+./interactive-server.sh --detach
+
+# 2. Open a Bash console on the running container.
+docker exec -it --user llama rocm-llama-interactive /bin/bash
+
+# 3. Inside the container, launch the requested model.
+llama-server \
+  --hf-repo unsloth/Qwen3.8-27B-GGUF \
+  --host 127.0.0.1 \
+  --port 8000 \
+  --ctx-size 4096 \
+  --flash-attn on \
+  -ngl 99
+```
+
+The model server is then available from the host at `http://127.0.0.1:8000`. Stop the foreground server with `Ctrl-C`, exit Bash, then remove the detached container cleanly:
+
+```bash
+docker stop --time 30 rocm-llama-interactive
+```
+
+The named volume `rocm-llama-home` persists `/home/llama`, including `.bash_history`, between interactive sessions. The default `./interactive-server.sh` command combines steps 1 and 2 by launching directly into Bash.
 
 ## Quick start
 
 Build a persistent local image:
 
 ```bash
-docker build -t rocm-llama-cpp:rocm724 .
+docker build -t rocm-llama-cpp:rocm714 .
 ```
 
 Open an interactive shell with GPU access:
@@ -36,12 +65,13 @@ For the complete procedures and test cases, read [the operations guide](docs/OPE
 
 | Component | Current value |
 | --- | --- |
-| Base image | `rocm/pytorch:rocm7.2.4_ubuntu24.04_py3.12_pytorch_release_2.10.0` |
-| llama.cpp | `b10106` |
+| Base image | `rocm/pytorch:rocm7.14_ubuntu24.04_py3.12_pytorch_release_2.12.0` |
+| llama.cpp | `9723942adc518b43c4b95dc4dce6906903eb5e09` |
 | ROCm targets | `gfx908`, `gfx1100`, `gfx1201` |
 | Binaries | `/usr/local/bin/llama/llama-server`, `/usr/local/bin/llama/llama-bench` |
 | Runtime user | `llama`, in `video` and `render` groups |
 | Default cache | `HF_HOME=/home/llama/.cache/huggingface` |
+| Interactive home | `rocm-llama-home:/home/llama` |
 | Router port | `8000` |
 
 The image also contains `huggingface_hub` and `hf_transfer`. The source checkout is removed after compilation.
@@ -93,7 +123,10 @@ The launcher scripts accept these environment variables:
 
 ```bash
 # Select a different locally built image.
-IMAGE=rocm-llama-cpp:rocm724-test ./interactive-server.sh
+IMAGE=rocm-llama-cpp:rocm714-test ./interactive-server.sh
+
+# Persist interactive home state in a different named volume.
+HOME_VOLUME=rocm-llama-home-test ./interactive-server.sh
 
 # Limit ROCm to the indices reported by llama-bench --list-devices.
 HIP_VISIBLE_DEVICES=2,3 ./interactive-server.sh

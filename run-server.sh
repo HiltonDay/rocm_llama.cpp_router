@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-IMAGE="${IMAGE:-rocm-llama-cpp:rocm724}"
+IMAGE="${IMAGE:-rocm-llama-cpp:rocm714}"
 GPU_ENV=()
 if [[ -n "${HIP_VISIBLE_DEVICES:-}" ]]; then
   GPU_ENV+=(--env "HIP_VISIBLE_DEVICES=${HIP_VISIBLE_DEVICES}")

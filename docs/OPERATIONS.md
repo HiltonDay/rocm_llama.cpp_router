@@ -11,11 +11,38 @@ cd rocm_docker
 The default image tag is:
 
 ```bash
-export IMAGE=rocm-llama-cpp:rocm724
+export IMAGE=rocm-llama-cpp:rocm714
 export TEST_REPO=unsloth/Qwen3.5-2B-GGUF
 ```
 
-The scripts accept `IMAGE` and `HIP_VISIBLE_DEVICES` from the environment. If `HIP_VISIBLE_DEVICES` is unset, the container can see all GPUs passed through `--device`.
+The scripts accept `IMAGE`, `HOME_VOLUME`, and `HIP_VISIBLE_DEVICES` from the environment. If `HIP_VISIBLE_DEVICES` is unset, the container can see all GPUs passed through `--device`.
+
+## Quick start: interactive Qwen3.8-27B
+
+Use this three-step sequence for a separate container launch and console:
+
+```bash
+# 1. Launch the interactive container in the background.
+./interactive-server.sh --detach
+
+# 2. Open a Bash console on the running container.
+docker exec -it --user llama rocm-llama-interactive /bin/bash
+
+# 3. Inside the container, launch the requested model.
+llama-server \
+  --hf-repo unsloth/Qwen3.8-27B-GGUF \
+  --host 127.0.0.1 \
+  --port 8000 \
+  --ctx-size 4096 \
+  --flash-attn on \
+  -ngl 99
+```
+
+The default `./interactive-server.sh` command starts the container and opens Bash in one step. The interactive home volume is `rocm-llama-home:/home/llama`; Bash history is stored at `/home/llama/.bash_history` and survives container removal. Stop the foreground server with `Ctrl-C`, exit Bash, and stop the detached container:
+
+```bash
+docker stop --time 30 rocm-llama-interactive
+```
 
 ## Before starting
 
@@ -46,8 +73,8 @@ docker build -t "$IMAGE" .
 
 The Dockerfile currently pins:
 
-- ROCm base image: `rocm/pytorch:rocm7.2.4_ubuntu24.04_py3.12_pytorch_release_2.10.0`
-- llama.cpp commit: `b10106`
+- ROCm base image: `rocm/pytorch:rocm7.14_ubuntu24.04_py3.12_pytorch_release_2.12.0`
+- llama.cpp commit: `9723942adc518b43c4b95dc4dce6906903eb5e09`
 - Build targets: `gfx908,gfx1100,gfx1201`
 - Binaries: `llama-server` and `llama-bench`
 
@@ -63,7 +90,7 @@ docker run --rm --entrypoint /usr/local/bin/llama/llama-bench "$IMAGE" --help >/
 
 ### Test case 1: persistent image
 
-Pass when `docker image inspect` prints the `rocm-llama-cpp:rocm724` tag and both help commands exit with status 0. If the image is missing, repeat the build from `rocm_docker/`.
+Pass when `docker image inspect` prints the `rocm-llama-cpp:rocm714` tag and both help commands exit with status 0. If the image is missing, repeat the build from `rocm_docker/`.
 
 ## 2. Run the container and connect with Bash
 
@@ -73,6 +100,13 @@ Use the interactive launcher:
 IMAGE="$IMAGE" ./interactive-server.sh
 ```
 
+For a separate console connection, start it detached and use `docker exec`:
+
+```bash
+IMAGE="$IMAGE" ./interactive-server.sh --detach
+docker exec -it --user llama rocm-llama-interactive /bin/bash
+```
+
 The launcher:
 
 - Runs the image with the Dockerfile entrypoint.
@@ -80,7 +114,8 @@ The launcher:
 - Passes `/dev/kfd` and `/dev/dri` to the container.
 - Mounts the Hugging Face cache read-write.
 - Provides a writable, non-executable `/tmp` tmpfs for runtime state.
-- Removes the interactive container when Bash exits.
+- Mounts the named `rocm-llama-home` volume at `/home/llama` so history persists.
+- Removes the interactive container when Bash exits; the named volume remains.
 
 Inside the container, verify the identity, paths, and binaries:
 
@@ -171,7 +206,7 @@ Set `LLAMA_CPP_COMMIT` to a commit or tag accepted by the upstream repository an
 
 ```bash
 export NEW_COMMIT=<llama.cpp-commit-or-tag>
-export NEW_IMAGE=rocm-llama-cpp:rocm724-<version>
+export NEW_IMAGE=rocm-llama-cpp:rocm714-<version>
 
 docker build \
   --pull \
@@ -206,9 +241,9 @@ This concrete test keeps the current commit but gives the result a separate tag.
 
 ```bash
 export VERSION=doc-test
-export TEST_IMAGE="rocm-llama-cpp:rocm724-$VERSION"
+export TEST_IMAGE="rocm-llama-cpp:rocm714-$VERSION"
 docker build \
-  --build-arg LLAMA_CPP_COMMIT=b10106 \
+  --build-arg LLAMA_CPP_COMMIT=9723942adc518b43c4b95dc4dce6906903eb5e09 \
   -t "$TEST_IMAGE" \
   .
 docker image inspect "$IMAGE" "$TEST_IMAGE" --format '{{.RepoTags}}'
@@ -359,7 +394,7 @@ The checked-in router CMD currently binds `0.0.0.0` because `run-server.sh` uses
 - **Model not found:** Check `$HF_HOME/hub/models--unsloth--Qwen3.5-2B-GGUF/snapshots` inside the container. The host cache must be mounted at the path used by the launcher.
 - **`hipErrorNoBinaryForGpu`:** The image was not built for the selected architecture. Confirm `LLAMACPP_ROCM_ARCH` in the Dockerfile and rebuild with `--no-cache`.
 - **`/dev/kfd: Permission denied`:** Check host group membership and the `--device`, `--group-add video`, and `--group-add render` flags.
-- **`--flash-attn` argument error:** This image's b10106 binary requires `--flash-attn on`, `off`, or `auto`.
+- **`--flash-attn` argument error:** This image's 9723942adc518b43c4b95dc4dce6906903eb5e09 binary requires `--flash-attn on`, `off`, or `auto`.
 - **Port 8000 occupied:** Run `ss -ltnp '( sport = :8000 )'`, stop the existing service, or choose another port in the manual command.
 - **Out of memory:** Lower `--ctx-size`, use a smaller quantization, select more GPUs, or change the tensor split after benchmarking.
 - **Slow or failed GPU selection:** Recheck indices with `llama-bench --list-devices`; `HIP_VISIBLE_DEVICES` uses ROCm enumeration order.

@@ -73,7 +73,7 @@ Key: Vulkan/RADV currently outperforms HIP on RDNA4 for decode. HIP performance 
 - Dual-GPU prefill gains 35-80% at long contexts (pp8192+)
 
 ### llama.cpp Version
-- Current Dockerfile pinned to: b10106 (latest stable release)
+- Current Dockerfile pinned to: 9723942adc518b43c4b95dc4dce6906903eb5e09 (upstream master snapshot resolved 2026-08-30)
 - Includes: MTP, multi-GPU layer split, flash attention rocWMMA, gfx1201 HIP support
-- Base image: rocm/pytorch:rocm7.2.4_ubuntu24.04_py3.12_pytorch_release_2.10.0 (stable legacy stream)
-- ROCm 7.14 (TheRock) exists but is new/preview — staying on 7.2.4 for stability
+- Base image: rocm/pytorch:rocm7.14_ubuntu24.04_py3.12_pytorch_release_2.12.0
+- ROCm 7.14 is the current TheRock-based image stream used for this build
