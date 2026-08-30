@@ -33,6 +33,63 @@ docker stop --time 30 rocm-llama-interactive
 
 The named volume `rocm-llama-home` persists `/home/llama`, including `.bash_history`, between interactive sessions. The default `./interactive-server.sh` command combines steps 1 and 2 by launching directly into Bash.
 
+## Quick start: Qwen3.8-27B multi-GPU modes
+
+The GPU indices below use the validated ROCm enumeration: physical device 0 is an R9700, device 1 is the MI100, device 2 is the RX 7900 XTX, and device 3 is the second R9700. `HIP_VISIBLE_DEVICES` remaps the selected physical devices to logical indices inside the container.
+
+### Two R9700s: tensor-parallel mode, 256k context
+
+Use physical devices 0 and 3. Inside the container they become logical GPUs 0 and 1. The equal tensor split assigns the model across both cards:
+
+```bash
+# Host: start an interactive container with only the two R9700s visible.
+HIP_VISIBLE_DEVICES=0,3 ./interactive-server.sh --detach
+
+# Host: open a Bash console.
+docker exec -it --user llama rocm-llama-interactive /bin/bash
+
+# Container: start Qwen3.8-27B with tensor parallelism and 256k context.
+llama-server \\
+  --hf-repo unsloth/Qwen3.8-27B-GGUF \\
+  --split-mode tensor \\
+  --tensor-split 1,1 \\
+  --ctx-size 262144 \\
+  --flash-attn on \\
+  --host 127.0.0.1 \\
+  --port 8000 \\
+  -ngl all
+```
+
+### RX 7900 XTX and MI100: row-split mode, 200k context
+
+Use physical devices 1 and 2. They become logical GPUs 0 and 1, with the MI100 as logical GPU 0 and the row-mode main GPU. The equal row split uses both cards:
+
+```bash
+# Host: start an interactive container with only the MI100 and RX 7900 XTX visible.
+HIP_VISIBLE_DEVICES=1,2 ./interactive-server.sh --detach
+
+# Host: open a Bash console.
+docker exec -it --user llama rocm-llama-interactive /bin/bash
+
+# Container: start Qwen3.8-27B with row splitting and 200k context.
+llama-server \\
+  --hf-repo unsloth/Qwen3.8-27B-GGUF \\
+  --split-mode row \\
+  --tensor-split 1,1 \\
+  --main-gpu 0 \\
+  --ctx-size 204800 \\
+  --flash-attn on \\
+  --host 127.0.0.1 \\
+  --port 8000 \\
+  -ngl all
+```
+
+Stop either session by pressing `Ctrl-C` in the server console, exiting Bash, and running:
+
+```bash
+docker stop --time 30 rocm-llama-interactive
+```
+
 ## Quick start
 
 Build a persistent local image:

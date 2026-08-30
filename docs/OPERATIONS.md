@@ -44,6 +44,59 @@ The default `./interactive-server.sh` command starts the container and opens Bas
 docker stop --time 30 rocm-llama-interactive
 ```
 
+## Quick start: Qwen3.8-27B multi-GPU modes
+
+The validated ROCm device order is physical device 0=R9700, 1=MI100, 2=RX 7900 XTX, and 3=R9700. `HIP_VISIBLE_DEVICES` selects physical devices and exposes them to llama.cpp as logical devices starting at 0. The commands use the pinned llama.cpp options `--split-mode`, `--tensor-split`, and `--main-gpu`.
+
+### Two R9700s: tensor-parallel mode with 256k context
+
+Select physical devices 0 and 3. The selected cards become logical GPUs 0 and 1, and `--split-mode tensor` enables the parallelized tensor split:
+
+```bash
+# Host terminal, from rocm_docker/.
+HIP_VISIBLE_DEVICES=0,3 ./interactive-server.sh --detach
+docker exec -it --user llama rocm-llama-interactive /bin/bash
+
+# Inside the container.
+llama-server \\
+  --hf-repo unsloth/Qwen3.8-27B-GGUF \\
+  --split-mode tensor \\
+  --tensor-split 1,1 \\
+  --ctx-size 262144 \\
+  --flash-attn on \\
+  --host 127.0.0.1 \\
+  --port 8000 \\
+  -ngl all
+```
+
+### RX 7900 XTX and MI100: row-split mode with 200k context
+
+Select physical devices 1 and 2. The MI100 is logical GPU 0 and is selected as the row-mode main GPU; the RX 7900 XTX is logical GPU 1:
+
+```bash
+# Host terminal, from rocm_docker/.
+HIP_VISIBLE_DEVICES=1,2 ./interactive-server.sh --detach
+docker exec -it --user llama rocm-llama-interactive /bin/bash
+
+# Inside the container.
+llama-server \\
+  --hf-repo unsloth/Qwen3.8-27B-GGUF \\
+  --split-mode row \\
+  --tensor-split 1,1 \\
+  --main-gpu 0 \\
+  --ctx-size 204800 \\
+  --flash-attn on \\
+  --host 127.0.0.1 \\
+  --port 8000 \\
+  -ngl all
+```
+
+The two `--tensor-split 1,1` values request an equal model split across the two selected GPUs. These large contexts require sufficient model, KV-cache, and runtime workspace memory; reduce the context size if initialization reports an out-of-memory error. Stop either session with `Ctrl-C`, exit Bash, and run:
+
+```bash
+docker stop --time 30 rocm-llama-interactive
+```
+
 ## Before starting
 
 The host needs:
