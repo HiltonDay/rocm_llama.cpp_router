@@ -205,10 +205,13 @@ llama-bench -m MODEL.gguf -t 1 -ngl 99 -fa 1 \
 
 For models with MTP support (e.g., `unsloth/Qwen3.6-27B-MTP-GGUF`):
 ```bash
-llama-server --model hf=unsloth/Qwen3.6-27B-MTP-GGUF:Q4_K_M \
-  --draft-n-max 3 --draft-min 1
+llama-server --model hf=unsloth/Qwen3.6-27B-MTP-GGUF:Q8_0 \
+  --spec-type draft-mtp --spec-draft-n-max 2 \
+  --parallel 1 --flash-attn -ngl 99 \
+  --cache-type-k q8_0 --cache-type-v q8_0
 ```
-Expected: ~2x decode speedup with 85-95% acceptance rate.
+Constraints: requires MTP-specific GGUF, requires `--parallel 1`, works with tensor-split.
+Expected: ~1.5-2x decode speedup with 80-95% acceptance rate.
 
 ## Error Handling
 

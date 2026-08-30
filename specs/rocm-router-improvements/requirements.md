@@ -22,7 +22,7 @@ Phase 1 must be fully proven before Phase 2 begins.
 - Base image: `rocm/pytorch:rocm7.2.4_ubuntu24.04_py3.12_pytorch_release_2.10.0`
 - Build targets: `LLAMACPP_ROCM_ARCH="gfx908,gfx1100,gfx1201"`
 
-### Current Working Config (2 GPUs, R9700s not yet installed)
+### Current Working Config (2 GPUs — MI100 being reinstalled, R9700s not yet installed)
 - 7900 XTX (24GB, needs ~2GB for display) + MI100 (32GB)
 - Useable VRAM: ~52GB
 - Tensor-split: 5/8 or 9/16 (protects display GPU from OOM)
