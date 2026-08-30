@@ -104,6 +104,98 @@ Stop either session by pressing `Ctrl-C` in the server console, exiting Bash, an
 docker stop --time 30 rocm-llama-interactive
 ```
 
+## Quick start: two networked Qwen3.8-27B containers
+
+Run one model server in each of two containers, with the validated GPU pairs assigned independently. Both containers join the same user-defined Docker network. The llama-server port remains `8000` inside each container; `HOST_PORT` publishes distinct host loopback ports for host clients. Other Docker containers on `rocm-llama-net` should use the container names and internal port `8000`.
+
+Create the shared network once:
+
+```bash
+docker network create rocm-llama-net
+```
+
+### Container 1: two R9700s, tensor split
+
+Physical GPUs 0 and 3 are remapped to logical GPUs 0 and 1 inside this container:
+
+```bash
+# Host terminal 1.
+IMAGE=rocm-llama-cpp:rocm714 \
+HOME_VOLUME=rocm-llama-home-r9700-pair \
+CONTAINER_NAME=rocm-llama-r9700-pair \
+NETWORK=rocm-llama-net \
+HOST_PORT=8001 \
+HIP_VISIBLE_DEVICES=0,3 \
+./interactive-server.sh --detach
+
+docker exec -it --user llama rocm-llama-r9700-pair /bin/bash
+```
+
+Inside the first container:
+
+```bash
+llama-server \
+  --hf-repo unsloth/Qwen3.8-27B-GGUF \
+  --split-mode tensor \
+  --tensor-split 1,1 \
+  --ctx-size 262144 \
+  --flash-attn on \
+  --cache-type-k f16 \
+  --cache-type-v f16 \
+  --host 0.0.0.0 \
+  --port 8000 \
+  -ngl all
+```
+
+### Container 2: MI100 and RX 7900 XTX, layer split
+
+Physical GPUs 1 and 2 are remapped to logical GPUs 0 and 1 inside this container:
+
+```bash
+# Host terminal 2.
+IMAGE=rocm-llama-cpp:rocm714 \
+HOME_VOLUME=rocm-llama-home-mixed-pair \
+CONTAINER_NAME=rocm-llama-mixed-pair \
+NETWORK=rocm-llama-net \
+HOST_PORT=8002 \
+HIP_VISIBLE_DEVICES=1,2 \
+./interactive-server.sh --detach
+
+docker exec -it --user llama rocm-llama-mixed-pair /bin/bash
+```
+
+Inside the second container:
+
+```bash
+llama-server \
+  --hf-repo unsloth/Qwen3.8-27B-GGUF \
+  --split-mode layer \
+  --tensor-split 1,1 \
+  --ctx-size 204800 \
+  --flash-attn on \
+  --host 0.0.0.0 \
+  --port 8000 \
+  -ngl all
+```
+
+Host clients use `http://127.0.0.1:8001` for the two-R9700 server and `http://127.0.0.1:8002` for the MI100/RX 7900 XTX server. A peer container must join `rocm-llama-net` and can use these base URLs instead:
+
+```text
+http://rocm-llama-r9700-pair:8000
+http://rocm-llama-mixed-pair:8000
+```
+
+For example, start a peer with `--network rocm-llama-net`, or attach an existing container with `docker network connect rocm-llama-net <container>`. The `--host 0.0.0.0` setting is required for access through the Docker bridge; do not use the `127.0.0.1` setting from the single-container quick start.
+
+Stop both servers with `Ctrl-C`, exit each Bash shell, then remove the containers and network:
+
+```bash
+docker stop --time 30 rocm-llama-r9700-pair rocm-llama-mixed-pair
+docker network rm rocm-llama-net
+```
+
+The named home volumes remain unless explicitly removed. Remove `rocm-llama-home-r9700-pair` and `rocm-llama-home-mixed-pair` only if their persisted shell history is no longer needed.
+
 ## Quick start
 
 Build a persistent local image:
