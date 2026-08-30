@@ -4,7 +4,11 @@ set -euo pipefail
 # Interactive shell for manual llama-server/llama-bench usage.
 # Uses the entrypoint.sh for privilege drop (gosu llama), then runs bash.
 
-IMAGE="rocm-llama-cpp:rocm724"
+IMAGE="${IMAGE:-rocm-llama-cpp:rocm724}"
+GPU_ENV=()
+if [[ -n "${HIP_VISIBLE_DEVICES:-}" ]]; then
+  GPU_ENV+=(--env "HIP_VISIBLE_DEVICES=${HIP_VISIBLE_DEVICES}")
+fi
 
 # --rm prevents discarded debug containers from accumulating.
 # --network/--ipc host preserve local API reachability and permit shared-memory use.
@@ -26,5 +30,6 @@ docker run -it \
   --tmpfs /tmp:rw,noexec,nosuid,size=512m \
   --security-opt no-new-privileges \
   -v "${HOME}/.cache/huggingface:/home/llama/.cache/huggingface" \
+  "${GPU_ENV[@]}" \
   "${IMAGE}" \
   /bin/bash
