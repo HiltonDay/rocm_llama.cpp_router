@@ -1,7 +1,9 @@
 FROM docker.io/rocm/dev-ubuntu-24.04:7.14.0-full AS llama-builder
 
-# Upstream llama.cpp master as resolved on 2026-08-30.
+# Default build preserves the working control image. Pass both build args below
+# to produce the separate rdna-boosts experiment image.
 ARG LLAMA_CPP_COMMIT=9723942adc518b43c4b95dc4dce6906903eb5e09
+ARG RDNA_BOOSTS_COMMIT=
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libcurl4-openssl-dev \
@@ -12,7 +14,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN git clone https://github.com/ggml-org/llama.cpp.git /llama.cpp \
     && cd /llama.cpp \
-    && git checkout $LLAMA_CPP_COMMIT
+    && git checkout "$LLAMA_CPP_COMMIT" \
+    && if [ -n "$RDNA_BOOSTS_COMMIT" ]; then \
+         git clone --branch main https://github.com/stew675/llama-cpp-rdna-boosts.git /rdna-boosts \
+         && cd /rdna-boosts \
+         && git checkout --detach "$RDNA_BOOSTS_COMMIT" \
+         && git config --global user.name "rocm-llama-builder" \
+         && git config --global user.email "rocm-llama-builder@localhost" \
+         && bash /rdna-boosts/scripts/apply-all.sh /llama.cpp /rdna-boosts; \
+       fi
 
 WORKDIR /llama.cpp
 

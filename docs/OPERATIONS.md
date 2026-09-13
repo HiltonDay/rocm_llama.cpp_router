@@ -359,21 +359,32 @@ If a container remains, inspect `docker logs rocm-llama` and `docker inspect roc
 
 Keep the working tag. Give a new build its own tag so it can be compared or rolled back.
 
-### New llama.cpp commit
+### New llama.cpp commit or RDNA boost experiment
 
-Set `LLAMA_CPP_COMMIT` to a commit or tag accepted by the upstream repository and choose a new image tag:
+Set `LLAMA_CPP_COMMIT` to a commit or tag accepted by the upstream repository and choose a new image tag. For the supplied RDNA delivery, keep the verified patch baseline and pin the delivery commit explicitly:
 
 ```bash
-export NEW_COMMIT=<llama.cpp-commit-or-tag>
-export NEW_IMAGE=rocm-llama-cpp:rocm714-<version>
+export NEW_IMAGE=rocm-llama-cpp:rdna-boosts-20260902
+export LLAMA_CPP_COMMIT=0eadefebd
+export RDNA_BOOSTS_COMMIT=5cfbc0288e6d9ecc701b5ad891e15a6423daa423
 
 docker build \
   --pull \
   --no-cache \
-  --build-arg LLAMA_CPP_COMMIT="$NEW_COMMIT" \
+  --build-arg LLAMA_CPP_COMMIT="$LLAMA_CPP_COMMIT" \
+  --build-arg RDNA_BOOSTS_COMMIT="$RDNA_BOOSTS_COMMIT" \
   -t "$NEW_IMAGE" \
   .
 ```
+
+The existing `rocm-llama-cpp:rocm714` tag is not overwritten. Use the experiment explicitly:
+
+```bash
+IMAGE="$NEW_IMAGE" ./interactive-server.sh
+IMAGE="$NEW_IMAGE" ./run-server.sh
+```
+
+The default Dockerfile build preserves the working control image. Pass both build arguments shown above for the RDNA experiment; do not use an unverified upstream commit with the static patch set.
 
 `--no-cache` matters here. Without it, the cached clone and compile layers can leave the old llama.cpp revision in the image. `--pull` checks for a newer base image but does not change the Dockerfile's pinned base tag.
 

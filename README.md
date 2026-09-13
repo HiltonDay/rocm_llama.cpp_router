@@ -1,6 +1,6 @@
 # ROCm llama.cpp container
 
-This directory builds and runs `llama-server` and `llama-bench` for AMD GPUs through ROCm HIP. The current image is based on ROCm 7.14 and compiles llama.cpp commit `9723942adc518b43c4b95dc4dce6906903eb5e09` for `gfx908`, `gfx1100`, and `gfx1201`.
+This directory builds and runs `llama-server` and `llama-bench` for AMD GPUs through ROCm HIP. The preserved control image `rocm-llama-cpp:rocm714` was built from llama.cpp commit `9723942adc518b43c4b95dc4dce6906903eb5e09`. The RDNA experiment uses a separate image tag and applies the pinned `llama-cpp-rdna-boosts` delivery to its verified llama.cpp baseline `0eadefebd`.
 
 The operational guide uses `unsloth/Qwen3.5-2B-GGUF` for small smoke tests. The router configuration contains larger models for normal use; loading those models needs the available VRAM and can take longer.
 
