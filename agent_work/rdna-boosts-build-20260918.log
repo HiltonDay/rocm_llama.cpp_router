@@ -1,0 +1,514 @@
+Emulate Docker CLI using podman. Create /etc/containers/nodocker to quiet msg.
+[1/2] STEP 1/10: FROM docker.io/rocm/dev-ubuntu-24.04:7.14.0-full AS llama-builder
+Trying to pull docker.io/rocm/dev-ubuntu-24.04:7.14.0-full...
+Getting image source signatures
+Copying blob sha256:f16c4b393f61fd1845d4568ab2384b3b8f90437ea977cf831b87950f05a8b6e7
+Copying blob sha256:ca2678b20700c15185707964d9211b1a6406196114bf675f568b6025d37b3888
+Copying blob sha256:c5e3644816c06dce0e00e4c230b5512a4c8499af19117b0713c760bee5d590d4
+Copying blob sha256:a58f4bb2f6df03a67e099ed3733e0678d126a5e262ca689c906eb349692c0032
+Copying blob sha256:e72009c186f24db35bf36c39f46c6e60aec7d07ec83046db6faf52c695554a7a
+Copying config sha256:4c91c0d850e38a40fd669dd043ab42e9bad9a2b8a38e3f873c5a4eaced9f28cf
+Writing manifest to image destination
+[1/2] STEP 2/10: ARG LLAMA_CPP_COMMIT=9723942adc518b43c4b95dc4dce6906903eb5e09
+--> 5a20937c7b90
+[1/2] STEP 3/10: ARG RDNA_BOOSTS_COMMIT=
+--> d6c81805b401
+[1/2] STEP 4/10: ARG BUILD_JOBS=auto
+--> 7aa042f66193
+[1/2] STEP 5/10: RUN apt-get update && apt-get install -y --no-install-recommends     libcurl4-openssl-dev     cmake     git     libssl-dev     && rm -rf /var/lib/apt/lists/*
+Get:1 http://archive.ubuntu.com/ubuntu noble InRelease [256 kB]
+Get:2 http://security.ubuntu.com/ubuntu noble-security InRelease [126 kB]
+Get:3 https://repo.amd.com/rocm/packages-multi-arch/ubuntu2404 stable InRelease [2332 B]
+Get:4 https://repo.amd.com/rocm/packages-multi-arch/ubuntu2404 stable/main amd64 Packages [239 kB]
+Get:5 http://archive.ubuntu.com/ubuntu noble-updates InRelease [126 kB]
+Get:6 http://archive.ubuntu.com/ubuntu noble-backports InRelease [126 kB]
+Get:7 http://security.ubuntu.com/ubuntu noble-security/multiverse amd64 Packages [50.0 kB]
+Get:8 http://archive.ubuntu.com/ubuntu noble/universe amd64 Packages [19.3 MB]
+Get:9 http://security.ubuntu.com/ubuntu noble-security/universe amd64 Packages [1533 kB]
+Get:10 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages [1245 kB]
+Get:11 http://archive.ubuntu.com/ubuntu noble/restricted amd64 Packages [117 kB]
+Get:12 http://archive.ubuntu.com/ubuntu noble/main amd64 Packages [1808 kB]
+Get:13 http://archive.ubuntu.com/ubuntu noble/multiverse amd64 Packages [331 kB]
+Get:14 http://archive.ubuntu.com/ubuntu noble-updates/universe amd64 Packages [2149 kB]
+Get:15 http://archive.ubuntu.com/ubuntu noble-updates/multiverse amd64 Packages [56.2 kB]
+Get:16 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 Packages [1580 kB]
+Get:17 http://security.ubuntu.com/ubuntu noble-security/restricted amd64 Packages [1801 kB]
+Get:18 http://archive.ubuntu.com/ubuntu noble-updates/restricted amd64 Packages [1960 kB]
+Get:19 http://archive.ubuntu.com/ubuntu noble-backports/universe amd64 Packages [40.4 kB]
+Get:20 http://archive.ubuntu.com/ubuntu noble-backports/main amd64 Packages [78.5 kB]
+Get:21 http://archive.ubuntu.com/ubuntu noble-backports/multiverse amd64 Packages [671 B]
+Fetched 32.9 MB in 5s (6401 kB/s)
+Reading package lists...
+Reading package lists...
+Building dependency tree...
+Reading state information...
+The following additional packages will be installed:
+  cmake-data curl git-man libarchive13t64 libcurl3t64-gnutls libcurl4t64
+  liberror-perl libicu74 libjsoncpp25 librhash0 libssl3t64 libuv1t64 libxml2
+  openssl
+Suggested packages:
+  cmake-doc cmake-format elpa-cmake-mode ninja-build gettext-base
+  git-daemon-run | git-daemon-sysvinit git-doc git-email git-gui gitk gitweb
+  git-cvs git-mediawiki git-svn lrzip libcurl4-doc libidn-dev libkrb5-dev
+  libldap2-dev librtmp-dev libssh2-1-dev pkg-config libssl-doc
+Recommended packages:
+  less ssh-client
+The following NEW packages will be installed:
+  cmake cmake-data git git-man libarchive13t64 libcurl3t64-gnutls
+  libcurl4-openssl-dev liberror-perl libicu74 libjsoncpp25 librhash0
+  libssl-dev libuv1t64 libxml2
+The following packages will be upgraded:
+  curl libcurl4t64 libssl3t64 openssl
+4 upgraded, 14 newly installed, 0 to remove and 362 not upgraded.
+Need to get 37.2 MB of archives.
+After this operation, 130 MB of additional disk space will be used.
+Get:1 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 libssl3t64 amd64 3.0.13-0ubuntu3.15 [1944 kB]
+Get:2 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 libicu74 amd64 74.2-1ubuntu3.1 [10.9 MB]
+Get:3 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 libxml2 amd64 2.9.14+dfsg-1.3ubuntu3.8 [764 kB]
+Get:4 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 openssl amd64 3.0.13-0ubuntu3.15 [1003 kB]
+Get:5 http://archive.ubuntu.com/ubuntu noble/main amd64 libuv1t64 amd64 1.48.0-1.1build1 [97.3 kB]
+Get:6 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 libarchive13t64 amd64 3.7.2-2ubuntu0.8 [383 kB]
+Get:7 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 curl amd64 8.5.0-2ubuntu10.13 [226 kB]
+Get:8 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 libcurl4t64 amd64 8.5.0-2ubuntu10.13 [343 kB]
+Get:9 http://archive.ubuntu.com/ubuntu noble/main amd64 libjsoncpp25 amd64 1.9.5-6build1 [82.8 kB]
+Get:10 http://archive.ubuntu.com/ubuntu noble/main amd64 librhash0 amd64 1.4.3-3build1 [129 kB]
+Get:11 http://archive.ubuntu.com/ubuntu noble/main amd64 cmake-data all 3.28.3-1build7 [2155 kB]
+Get:12 http://archive.ubuntu.com/ubuntu noble/main amd64 cmake amd64 3.28.3-1build7 [11.2 MB]
+Get:13 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 libcurl3t64-gnutls amd64 8.5.0-2ubuntu10.13 [335 kB]
+Get:14 http://archive.ubuntu.com/ubuntu noble/main amd64 liberror-perl all 0.17029-2 [25.6 kB]
+Get:15 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 git-man all 1:2.43.0-1ubuntu7.3 [1100 kB]
+Get:16 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 git amd64 1:2.43.0-1ubuntu7.3 [3680 kB]
+Get:17 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 libcurl4-openssl-dev amd64 8.5.0-2ubuntu10.13 [446 kB]
+Get:18 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 libssl-dev amd64 3.0.13-0ubuntu3.15 [2408 kB]
+debconf: delaying package configuration, since apt-utils is not installed
+Fetched 37.2 MB in 6s (6627 kB/s)
+(Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 50451 files and directories currently installed.)
+Preparing to unpack .../libssl3t64_3.0.13-0ubuntu3.15_amd64.deb ...
+Unpacking libssl3t64:amd64 (3.0.13-0ubuntu3.15) over (3.0.13-0ubuntu3.11) ...
+Setting up libssl3t64:amd64 (3.0.13-0ubuntu3.15) ...
+Selecting previously unselected package libicu74:amd64.
+(Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 50451 files and directories currently installed.)
+Preparing to unpack .../00-libicu74_74.2-1ubuntu3.1_amd64.deb ...
+Unpacking libicu74:amd64 (74.2-1ubuntu3.1) ...
+Selecting previously unselected package libxml2:amd64.
+Preparing to unpack .../01-libxml2_2.9.14+dfsg-1.3ubuntu3.8_amd64.deb ...
+Unpacking libxml2:amd64 (2.9.14+dfsg-1.3ubuntu3.8) ...
+Preparing to unpack .../02-openssl_3.0.13-0ubuntu3.15_amd64.deb ...
+Unpacking openssl (3.0.13-0ubuntu3.15) over (3.0.13-0ubuntu3.11) ...
+Selecting previously unselected package libuv1t64:amd64.
+Preparing to unpack .../03-libuv1t64_1.48.0-1.1build1_amd64.deb ...
+Unpacking libuv1t64:amd64 (1.48.0-1.1build1) ...
+Selecting previously unselected package libarchive13t64:amd64.
+Preparing to unpack .../04-libarchive13t64_3.7.2-2ubuntu0.8_amd64.deb ...
+Unpacking libarchive13t64:amd64 (3.7.2-2ubuntu0.8) ...
+Preparing to unpack .../05-curl_8.5.0-2ubuntu10.13_amd64.deb ...
+Unpacking curl (8.5.0-2ubuntu10.13) over (8.5.0-2ubuntu10.11) ...
+Preparing to unpack .../06-libcurl4t64_8.5.0-2ubuntu10.13_amd64.deb ...
+Unpacking libcurl4t64:amd64 (8.5.0-2ubuntu10.13) over (8.5.0-2ubuntu10.11) ...
+Selecting previously unselected package libjsoncpp25:amd64.
+Preparing to unpack .../07-libjsoncpp25_1.9.5-6build1_amd64.deb ...
+Unpacking libjsoncpp25:amd64 (1.9.5-6build1) ...
+Selecting previously unselected package librhash0:amd64.
+Preparing to unpack .../08-librhash0_1.4.3-3build1_amd64.deb ...
+Unpacking librhash0:amd64 (1.4.3-3build1) ...
+Selecting previously unselected package cmake-data.
+Preparing to unpack .../09-cmake-data_3.28.3-1build7_all.deb ...
+Unpacking cmake-data (3.28.3-1build7) ...
+Selecting previously unselected package cmake.
+Preparing to unpack .../10-cmake_3.28.3-1build7_amd64.deb ...
+Unpacking cmake (3.28.3-1build7) ...
+Selecting previously unselected package libcurl3t64-gnutls:amd64.
+Preparing to unpack .../11-libcurl3t64-gnutls_8.5.0-2ubuntu10.13_amd64.deb ...
+Unpacking libcurl3t64-gnutls:amd64 (8.5.0-2ubuntu10.13) ...
+Selecting previously unselected package liberror-perl.
+Preparing to unpack .../12-liberror-perl_0.17029-2_all.deb ...
+Unpacking liberror-perl (0.17029-2) ...
+Selecting previously unselected package git-man.
+Preparing to unpack .../13-git-man_1%3a2.43.0-1ubuntu7.3_all.deb ...
+Unpacking git-man (1:2.43.0-1ubuntu7.3) ...
+Selecting previously unselected package git.
+Preparing to unpack .../14-git_1%3a2.43.0-1ubuntu7.3_amd64.deb ...
+Unpacking git (1:2.43.0-1ubuntu7.3) ...
+Selecting previously unselected package libcurl4-openssl-dev:amd64.
+Preparing to unpack .../15-libcurl4-openssl-dev_8.5.0-2ubuntu10.13_amd64.deb ...
+Unpacking libcurl4-openssl-dev:amd64 (8.5.0-2ubuntu10.13) ...
+Selecting previously unselected package libssl-dev:amd64.
+Preparing to unpack .../16-libssl-dev_3.0.13-0ubuntu3.15_amd64.deb ...
+Unpacking libssl-dev:amd64 (3.0.13-0ubuntu3.15) ...
+Setting up libcurl4t64:amd64 (8.5.0-2ubuntu10.13) ...
+Setting up libuv1t64:amd64 (1.48.0-1.1build1) ...
+Setting up libcurl3t64-gnutls:amd64 (8.5.0-2ubuntu10.13) ...
+Setting up liberror-perl (0.17029-2) ...
+Setting up libcurl4-openssl-dev:amd64 (8.5.0-2ubuntu10.13) ...
+Setting up libssl-dev:amd64 (3.0.13-0ubuntu3.15) ...
+Setting up libjsoncpp25:amd64 (1.9.5-6build1) ...
+Setting up libicu74:amd64 (74.2-1ubuntu3.1) ...
+Setting up librhash0:amd64 (1.4.3-3build1) ...
+Setting up git-man (1:2.43.0-1ubuntu7.3) ...
+Setting up cmake-data (3.28.3-1build7) ...
+Setting up curl (8.5.0-2ubuntu10.13) ...
+Setting up openssl (3.0.13-0ubuntu3.15) ...
+Setting up libxml2:amd64 (2.9.14+dfsg-1.3ubuntu3.8) ...
+Setting up git (1:2.43.0-1ubuntu7.3) ...
+Setting up libarchive13t64:amd64 (3.7.2-2ubuntu0.8) ...
+Setting up cmake (3.28.3-1build7) ...
+Processing triggers for libc-bin (2.39-0ubuntu8.7) ...
+--> 97bbe6268ecd
+[1/2] STEP 6/10: RUN git clone https://github.com/ggml-org/llama.cpp.git /llama.cpp     && cd /llama.cpp     && git checkout "$LLAMA_CPP_COMMIT"     && if [ -n "$RDNA_BOOSTS_COMMIT" ]; then          git clone --branch main https://github.com/stew675/llama-cpp-rdna-boosts.git /rdna-boosts          && cd /rdna-boosts          && git checkout --detach "$RDNA_BOOSTS_COMMIT"          && git config --global user.name "rocm-llama-builder"          && git config --global user.email "rocm-llama-builder@localhost"          && bash /rdna-boosts/scripts/apply-all.sh /llama.cpp /rdna-boosts;        fi
+Cloning into '/llama.cpp'...
+Updating files:  74% (2692/3602)Updating files:  75% (2702/3602)Updating files:  76% (2738/3602)Updating files:  77% (2774/3602)Updating files:  78% (2810/3602)Updating files:  79% (2846/3602)Updating files:  80% (2882/3602)Updating files:  81% (2918/3602)Updating files:  82% (2954/3602)Updating files:  83% (2990/3602)Updating files:  84% (3026/3602)Updating files:  85% (3062/3602)Updating files:  86% (3098/3602)Updating files:  87% (3134/3602)Updating files:  88% (3170/3602)Updating files:  89% (3206/3602)Updating files:  90% (3242/3602)Updating files:  91% (3278/3602)Updating files:  92% (3314/3602)Updating files:  93% (3350/3602)Updating files:  94% (3386/3602)Updating files:  95% (3422/3602)Updating files:  96% (3458/3602)Updating files:  97% (3494/3602)Updating files:  98% (3530/3602)Updating files:  99% (3566/3602)Updating files: 100% (3602/3602)Updating files: 100% (3602/3602), done.
+Note: switching to 'ebbb18522'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+HEAD is now at ebbb18522 openvino : Update OpenVINO to 2026.4;fix clangd,MSVC warnings;  (#29009)
+Cloning into '/rdna-boosts'...
+HEAD is now at 0cb5cf9 wip(bf16-native-prefill): add the turnkey HANDOVER.md
+Applying: rdna-boosts: block 00: structural and architecture fixes
+Applying: rdna-boosts: block 01: adaptive MTP draft depth
+Applying: rdna-boosts: block 02: fused chunked gated-delta-net prefill kernel
+Applying: rdna-boosts: block 03: BF16 KV cache and native-BF16 flash-attn
+Applying: rdna-boosts: block 04: RDNA4 WMMA flash-attn + Q6_K mmq prefill perf
+Applying: rdna-boosts: block 05: CPU bit-identical decode/verify batches
+Applying: rdna-boosts: block 06: host-buffer revert for discrete GPUs
+Applying: rdna-boosts: block 07: meta device-wrapper skip
+Applying: rdna-boosts: block 08: fused-core prefill kernels and GPU bit-identical
+Applying: rdna-boosts: block 09: meta-buffer compute-container headroom for
+Applying: rdna-boosts: block 10: k-quant-boosts - Q4_K/Q5_K/Q6_K/Q8_0 mmvq VDR
+Applying: rdna-boosts: block 11: skip CUDA graphs for multi-token PRE-FILL
+Applying: rdna-boosts: block 12: hybrid HIP all-reduce (RDNA4-gated)
+Applying: rdna-boosts: block 13: fused MoE gate+up+GLU MMQ + mmvq short-K item-split
+Applying: rdna-boosts: block 14: qwen4exp support
+Applying: rdna-boosts: block 15: campaign memory wins
+
+All 16 patches applied cleanly (strict git am) and committed on branch rdna-boosts:
+4e6035cda rdna-boosts: block 15: campaign memory wins
+9d0296e58 rdna-boosts: block 14: qwen4exp support
+0437fbc73 rdna-boosts: block 13: fused MoE gate+up+GLU MMQ + mmvq short-K item-split
+79e71f7b7 rdna-boosts: block 12: hybrid HIP all-reduce (RDNA4-gated)
+e99921ca6 rdna-boosts: block 11: skip CUDA graphs for multi-token PRE-FILL
+3ce666fd7 rdna-boosts: block 10: k-quant-boosts - Q4_K/Q5_K/Q6_K/Q8_0 mmvq VDR
+ac26325e4 rdna-boosts: block 09: meta-buffer compute-container headroom for
+a6b4f115c rdna-boosts: block 08: fused-core prefill kernels and GPU bit-identical
+a30de98cb rdna-boosts: block 07: meta device-wrapper skip
+937a93838 rdna-boosts: block 06: host-buffer revert for discrete GPUs
+0b069ab3e rdna-boosts: block 05: CPU bit-identical decode/verify batches
+e159349cb rdna-boosts: block 04: RDNA4 WMMA flash-attn + Q6_K mmq prefill perf
+3151bf6d9 rdna-boosts: block 03: BF16 KV cache and native-BF16 flash-attn
+29107e915 rdna-boosts: block 02: fused chunked gated-delta-net prefill kernel
+faabc6eab rdna-boosts: block 01: adaptive MTP draft depth
+a80436950 rdna-boosts: block 00: structural and architecture fixes
+
+Build (uses your system ROCm install; see patches/README.md for the full env-knob list):
+  cmake -B build -DGGML_HIP=ON -DGGML_HIP_RCCL=1 -DGPU_TARGETS="gfx1100;gfx1151;gfx1201" -DCMAKE_BUILD_TYPE=Release
+  cmake --build build -j
+
+  GPU_TARGETS is read from the environment if set; the default builds for all three
+  RDNA families the set supports (one binary runs on any of them; trim to your GPU
+  for a faster build):
+    gfx1100  RDNA 3   (RX 7900 XTX/XT, RX 7800 XT, ...)
+    gfx1151  RDNA 3.5 (Strix Point / Strix Halo APUs)
+    gfx1201  RDNA 4   (RX 9070 XT / 9070; gfx1200 = RX 9060 XT)
+  All three compile with ROCm >= 6.3 (RDNA4 codegen officially from 6.4.x; this set
+  was verified on ROCm 7.14).  Keep GGML_HIP_RCCL=1: block 12's hybrid all-reduce
+  uses RCCL for the large-tensor path, and on non-RDNA4 (gfx1100/gfx1151) the
+  internal AR is gated off and everything falls back to RCCL.
+  Optional (both ON by default upstream; keep for parity with the tuned reference build):
+    -DGGML_HIP_GRAPHS=ON -DGGML_NATIVE=1
+
+Verify:
+  ./build/bin/llama-cli -m <model> -ngl 99 -sm tensor -mg 0 -p "The capital of France is" -n 20 --seed 42 --temp 0 --single-turn
+  (compare same-seed output against a known-good build; coherence gate)
+--> ccb825183309
+[1/2] STEP 7/10: WORKDIR /llama.cpp
+--> 307fefb816fa
+[1/2] STEP 8/10: ENV LLAMACPP_ROCM_ARCH="gfx908,gfx1100,gfx1201"
+--> cfc661d0a8f4
+[1/2] STEP 9/10: RUN cmake -S . -B build       -DCMAKE_C_COMPILER=/opt/rocm/llvm/bin/clang       -DCMAKE_CXX_COMPILER=/opt/rocm/llvm/bin/clang++       -DGGML_HIP=ON       -DGGML_HIP_ROCWMMA_FATTN=ON       -DAMDGPU_TARGETS=$LLAMACPP_ROCM_ARCH       -DCMAKE_BUILD_TYPE=Release       -DLLAMA_OPENSSL=ON     && if [ "$BUILD_JOBS" = "auto" ]; then          cmake --build build --config Release -j"$(nproc)";        else          cmake --build build --config Release -j"$BUILD_JOBS";        fi
+-- The C compiler identification is Clang 23.0.0
+-- The CXX compiler identification is Clang 23.0.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /opt/rocm/llvm/bin/clang - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /opt/rocm/llvm/bin/clang++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- llama.cpp version: 0.4.1-dev
+CMAKE_BUILD_TYPE=Release
+-- Found Git: /usr/bin/git (found version "2.43.0") 
+-- The ASM compiler identification is Clang with GNU-like command-line
+-- Found assembler: /opt/rocm/llvm/bin/clang
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE  
+-- Warning: ccache not found - consider installing it for faster compilation or disable this warning with GGML_CCACHE=OFF
+-- CMAKE_SYSTEM_PROCESSOR: x86_64
+-- GGML_SYSTEM_ARCH: x86
+-- Found OpenMP_C: -fopenmp=libomp (found version "5.1") 
+-- Found OpenMP_CXX: -fopenmp=libomp (found version "5.1") 
+-- Found OpenMP: TRUE (found version "5.1")  
+-- Including CPU backend
+-- x86 detected
+-- Adding CPU backend variant ggml-cpu: -march=native 
+-- The HIP compiler identification is Clang 23.0.0
+-- Detecting HIP compiler ABI info
+-- Detecting HIP compiler ABI info - done
+-- Check for working HIP compiler: /opt/rocm/lib/llvm/bin/clang++ - skipped
+-- Detecting HIP compile features
+-- Detecting HIP compile features - done
+-- HIP: Using hipcc from relative path: /opt/rocm/bin/hipcc
+-- HIP_PLATFORM using hip_HIPCONFIG_EXECUTABLE: amd
+-- Performing Test HIP_CLANG_SUPPORTS_PARALLEL_JOBS
+-- Performing Test HIP_CLANG_SUPPORTS_PARALLEL_JOBS - Success
+-- HIP: Using hipcc from relative path: /opt/rocm/bin/hipcc
+-- HIP and hipBLAS found
+-- FlashAttention K-V type combinations: f16-f16;q4_0-q4_0;q4_1-q4_1;q5_0-q5_0;q5_1-q5_1;q8_0-q8_0;bf16-bf16;iq4_nl-iq4_nl
+-- Including HIP backend
+-- ggml version: 0.24.0
+-- ggml commit:  4e6035cda-dirty
+-- Found OpenSSL: /usr/lib/x86_64-linux-gnu/libcrypto.so (found version "3.0.13")  
+-- Performing Test OPENSSL_VERSION_SUPPORTED
+-- Performing Test OPENSSL_VERSION_SUPPORTED - Success
+-- OpenSSL found: 3.0.13
+-- Generating embedded license file for target: llama-app
+-- Configuring done (5.5s)
+-- Generating done (0.6s)
+-- Build files have been written to: /llama.cpp/build
+[  0%] Building CXX object vendor/cpp-httplib/CMakeFiles/cpp-httplib.dir/httplib.cpp.o
+[  1%] Building CXX object tools/mtmd/CMakeFiles/llama-llava-cli.dir/deprecation-warning.cpp.o
+[  1%] Building C object ggml/src/CMakeFiles/ggml-base.dir/ggml.c.o
+[  1%] Building CXX object vendor/hash/CMakeFiles/vendor-hash.dir/hash.cpp.o
+[  1%] Building CXX object ggml/src/CMakeFiles/ggml-base.dir/ggml.cpp.o
+[  1%] Building CXX object common/CMakeFiles/llama-common-base.dir/build-info.cpp.o
+[  1%] Building CXX object ggml/src/CMakeFiles/ggml-base.dir/ggml-backend.cpp.o
+[  1%] Building CXX object ggml/src/CMakeFiles/ggml-base.dir/ggml-backend-meta.cpp.o
+[  1%] Provisioning UI assets
+[  1%] Building CXX object tools/mtmd/CMakeFiles/llama-minicpmv-cli.dir/deprecation-warning.cpp.o
+[  1%] Building C object vendor/hash/CMakeFiles/vendor-hash.dir/xxhash/xxhash.c.o
+[  1%] Building C object ggml/src/CMakeFiles/ggml-base.dir/ggml-alloc.c.o
+[  2%] Building CXX object tools/mtmd/CMakeFiles/llama-qwen2vl-cli.dir/deprecation-warning.cpp.o
+[  2%] Building CXX object ggml/src/CMakeFiles/ggml-base.dir/ggml-opt.cpp.o
+[  2%] Building CXX object tools/mtmd/CMakeFiles/llama-gemma3-cli.dir/deprecation-warning.cpp.o
+[  3%] Building CXX object vendor/hash/CMakeFiles/vendor-hash.dir/sha1/sha1.c.o
+[  3%] Building CXX object ggml/src/CMakeFiles/ggml-base.dir/ggml-threading.cpp.o
+[  3%] Building C object ggml/src/CMakeFiles/ggml-base.dir/ggml-quants.c.o
+[  3%] Building C object vendor/hash/CMakeFiles/vendor-hash.dir/sha256/sha256.c.o
+[  3%] Building CXX object ggml/src/CMakeFiles/ggml-base.dir/gguf.cpp.o
+-- UI: downloading from b11040: https://huggingface.co/buckets/ggml-org/llama-ui/resolve/b11040/dist.tar.gz
+-- UI: download dist.tar.gz.sha256 from b11040 failed: "HTTP response code said error"
+-- UI: downloading from latest: https://huggingface.co/buckets/ggml-org/llama-ui/resolve/latest/dist.tar.gz
+[  3%] Linking CXX executable ../../bin/llama-qwen2vl-cli
+[  3%] Linking CXX executable ../../bin/llama-minicpmv-cli
+[  3%] Linking CXX executable ../../bin/llama-llava-cli
+[  3%] Linking CXX static library libllama-common-base.a
+[  3%] Linking CXX executable ../../bin/llama-gemma3-cli
+[  3%] Built target llama-common-base
+[  3%] Built target llama-minicpmv-cli
+[  3%] Built target llama-llava-cli
+[  3%] Built target llama-qwen2vl-cli
+[  3%] Built target llama-gemma3-cli
+[  4%] Linking CXX static library libvendor-hash.a
+[  4%] Built target vendor-hash
+[  4%] Linking CXX shared library ../../bin/libggml-base.so
+[  4%] Built target ggml-base
+[  4%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/ggml-cpu.c.o
+[  4%] Building CXX object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/iqp.cpp.o
+[  5%] Building CXX object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/ggml-cpu.cpp.o
+[  5%] Building CXX object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/repack.cpp.o
+[  5%] Building CXX object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/traits.cpp.o
+[  5%] Building CXX object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/hbm.cpp.o
+[  6%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/quants.c.o
+[  6%] Building CXX object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/amx/mmq.cpp.o
+[  6%] Building CXX object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/binary-ops.cpp.o
+[  6%] Building CXX object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/unary-ops.cpp.o
+[  6%] Building CXX object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/vec.cpp.o
+[  6%] Building CXX object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/amx/amx.cpp.o
+[  6%] Building CXX object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/ops.cpp.o
+[  6%] Building CXX object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/llamafile/sgemm.cpp.o
+[  7%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/arch/x86/quants.c.o
+[  7%] Building CXX object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/arch/x86/repack.cpp.o
+[  7%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/acc.cu.o
+[  7%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/add-id.cu.o
+[  7%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/allreduce-hip.cu.o
+[  8%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/allreduce.cu.o
+[  8%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/arange.cu.o
+[  8%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/binbcast.cu.o
+[  8%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/argmax.cu.o
+[  9%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/clamp.cu.o
+[  8%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/argsort.cu.o
+[  9%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/col2im-1d.cu.o
+[  9%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/concat.cu.o
+[  9%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/conv2d-dw.cu.o
+[  9%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/conv2d-transpose.cu.o
+[  9%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/conv-transpose-1d.cu.o
+[ 10%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/conv2d.cu.o
+[ 10%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/convert.cu.o
+[ 10%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/count-equal.cu.o
+[ 10%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/cpy.cu.o
+[ 10%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/cross-entropy-loss.cu.o
+[ 10%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/cumsum.cu.o
+[ 11%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/diag.cu.o
+[ 11%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/diagmask.cu.o
+[ 11%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/dsv4-hc.cu.o
+[ 11%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/fattn-qsa.cu.o
+[ 11%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/fattn-tile.cu.o
+[ 11%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/fattn.cu.o
+[ 12%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/fwht.cu.o
+[ 12%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/fill.cu.o
+[ 12%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/gated_delta_net.cu.o
+[ 12%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/gated_delta_net_chunked.cu.o
+[ 12%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/gated_delta_net_chunked_bf16_gfx11.cu.o
+[ 12%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/gated_delta_net_chunked_bf16.cu.o
+[ 13%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/getrows.cu.o
+[ 13%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/ggml-cuda.cu.o
+[ 13%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/gla.cu.o
+[ 13%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/hc-mix.cu.o
+[ 13%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/indexer-topk.cu.o
+[ 13%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/hyperconn.cu.o
+[ 13%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/im2col.cu.o
+[ 14%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/indexer-score.cu.o
+[ 14%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/mean.cu.o
+[ 14%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/lightning-indexer.cu.o
+[ 14%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/mmf.cu.o
+[ 14%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/mmid.cu.o
+[ 15%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/mmvq.cu.o
+[ 15%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/mmq.cu.o
+[ 15%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/mmvf.cu.o
+-- UI: archive verified and extracted
+-- UI: HF download succeeded, stamp updated (ggml-org/llama-ui|b11040, resolved: latest)
+[ 15%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/moe-weighted-reduction.cu.o
+[ 15%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/norm.cu.o
+[ 16%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/opt-step-adamw.cu.o
+[ 16%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/opt-step-sgd.cu.o
+-- UI: gzip compression applied (/llama.cpp/build/tools/ui/ui-gzip/_gzip)
+[ 16%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/out-prod.cu.o
+[ 16%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/pad.cu.o
+[ 16%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/pad_reflect_1d.cu.o
+[ 16%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/pool1d.cu.o
+[ 17%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/pool2d.cu.o
+[ 17%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/quantize.cu.o
+[ 17%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/roll.cu.o
+[ 17%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/rope.cu.o
+[ 17%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/scale.cu.o
+-- UI: embedded 70 assets
+[ 17%] Built target llama-ui-assets
+[ 17%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/set-rows.cu.o
+[ 18%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/set.cu.o
+[ 18%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/snake.cu.o
+[ 18%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/softcap.cu.o
+[ 18%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/softmax.cu.o
+[ 18%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/solve_tri.cu.o
+[ 18%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/ssm-conv.cu.o
+[ 19%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/ssm-scan.cu.o
+[ 19%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/sum.cu.o
+[ 19%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/sumrows.cu.o
+[ 19%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/top-k.cu.o
+[ 19%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/tri.cu.o
+[ 19%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/topk-moe.cu.o
+[ 20%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/tsembd.cu.o
+[ 20%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/unary.cu.o
+[ 20%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/upscale.cu.o
+[ 20%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/wkv.cu.o
+[ 20%] Building CXX object tools/ui/CMakeFiles/llama-ui.dir/ui.cpp.o
+[ 20%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-tile-instance-dkq112-dv112.cu.o
+[ 20%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-tile-instance-dkq128-dv128.cu.o
+[ 21%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-tile-instance-dkq192-dv128.cu.o
+[ 21%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-tile-instance-dkq256-dv256.cu.o
+[ 21%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-tile-instance-dkq320-dv256.cu.o
+[ 21%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-tile-instance-dkq40-dv40.cu.o
+[ 21%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-tile-instance-dkq512-dv512.cu.o
+[ 22%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-tile-instance-dkq576-dv512.cu.o
+[ 22%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-tile-instance-dkq64-dv64.cu.o
+[ 22%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-tile-instance-dkq72-dv72.cu.o
+[ 22%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-tile-instance-dkq80-dv80.cu.o
+[ 22%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-tile-instance-dkq96-dv96.cu.o
+[ 22%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-mma-f16-instance-ncols1_1-ncols2_16.cu.o
+[ 23%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-mma-f16-instance-ncols1_1-ncols2_32.cu.o
+[ 23%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-mma-f16-instance-ncols1_1-ncols2_8.cu.o
+[ 23%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-mma-f16-instance-ncols1_16-ncols2_1.cu.o
+[ 23%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-mma-f16-instance-ncols1_16-ncols2_2.cu.o
+[ 23%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-mma-f16-instance-ncols1_16-ncols2_4.cu.o
+[ 23%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-mma-f16-instance-ncols1_2-ncols2_16.cu.o
+[ 24%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-mma-f16-instance-ncols1_2-ncols2_32.cu.o
+[ 24%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-mma-f16-instance-ncols1_2-ncols2_4.cu.o
+[ 24%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-mma-f16-instance-ncols1_2-ncols2_8.cu.o
+[ 24%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-mma-f16-instance-ncols1_32-ncols2_1.cu.o
+[ 24%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-mma-f16-instance-ncols1_32-ncols2_2.cu.o
+[ 24%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-mma-f16-instance-ncols1_4-ncols2_16.cu.o
+[ 25%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-mma-f16-instance-ncols1_4-ncols2_2.cu.o
+[ 25%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-mma-f16-instance-ncols1_4-ncols2_4.cu.o
+[ 25%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-mma-f16-instance-ncols1_4-ncols2_8.cu.o
+[ 25%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-mma-f16-instance-ncols1_64-ncols2_1.cu.o
+[ 25%] Linking CXX shared library ../../bin/libggml-cpu.so
+[ 25%] Built target ggml-cpu
+[ 25%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-mma-f16-instance-ncols1_8-ncols2_1.cu.o
+[ 25%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-mma-f16-instance-ncols1_8-ncols2_2.cu.o
+[ 26%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-mma-f16-instance-ncols1_8-ncols2_4.cu.o
+[ 26%] Linking CXX static library libllama-ui.a
+[ 26%] Built target llama-ui
+[ 26%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-mma-f16-instance-ncols1_8-ncols2_8.cu.o
+[ 26%] Linking CXX static library libcpp-httplib.a
+[ 26%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmq-instance-iq1_s.cu.o
+[ 26%] Built target cpp-httplib
+[ 26%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmq-instance-iq2_s.cu.o
+[ 26%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmq-instance-iq2_xs.cu.o
+[ 26%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmq-instance-iq2_xxs.cu.o
+[ 27%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmq-instance-iq3_s.cu.o
+[ 27%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmq-instance-iq3_xxs.cu.o
+[ 27%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmq-instance-iq4_nl.cu.o
+[ 27%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmq-instance-iq4_xs.cu.o
+[ 27%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmq-instance-mxfp4.cu.o
+[ 27%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmq-instance-nvfp4.cu.o
+[ 28%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmq-instance-q1_0.cu.o
+[ 28%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmq-instance-q2_0.cu.o
+[ 28%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmq-instance-q2_k.cu.o
+[ 28%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmq-instance-q3_k.cu.o
+[ 28%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmq-instance-q4_0.cu.o
+[ 29%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmq-instance-q4_1.cu.o
+[ 29%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmq-instance-q4_k.cu.o
+[ 29%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmq-instance-q5_0.cu.o
+[ 29%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmq-instance-q5_1.cu.o
+[ 29%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmq-instance-q5_k.cu.o
+[ 29%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmq-instance-q6_k.cu.o
+[ 30%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmq-instance-q8_0.cu.o
+[ 30%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmf-instance-ncols_1.cu.o
+[ 30%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmf-instance-ncols_10.cu.o
+[ 30%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmf-instance-ncols_11.cu.o
+[ 30%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmf-instance-ncols_12.cu.o
+[ 30%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmf-instance-ncols_13.cu.o
+[ 31%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmf-instance-ncols_14.cu.o
+[ 31%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmf-instance-ncols_15.cu.o
+[ 31%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmf-instance-ncols_16.cu.o
+[ 31%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmf-instance-ncols_2.cu.o
+[ 31%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmf-instance-ncols_3.cu.o
+[ 31%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmf-instance-ncols_4.cu.o
+[ 32%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmf-instance-ncols_5.cu.o
+[ 32%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmf-instance-ncols_6.cu.o
+[ 32%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmf-instance-ncols_7.cu.o
+[ 32%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmf-instance-ncols_8.cu.o
+[ 32%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/mmf-instance-ncols_9.cu.o
+[ 32%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-vec-instance-f16-f16.cu.o
+[ 33%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-vec-instance-q4_0-q4_0.cu.o
+[ 33%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-vec-instance-q4_1-q4_1.cu.o
+[ 33%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-vec-instance-q5_0-q5_0.cu.o
+[ 33%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-vec-instance-q5_1-q5_1.cu.o
+[ 33%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-vec-instance-q8_0-q8_0.cu.o
+[ 33%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-vec-instance-bf16-bf16.cu.o
+[ 34%] Building HIP object ggml/src/ggml-hip/CMakeFiles/ggml-hip.dir/__/ggml-cuda/template-instances/fattn-vec-instance-iq4_nl-iq4_nl.cu.o

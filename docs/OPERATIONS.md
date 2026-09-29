@@ -15,6 +15,8 @@ export IMAGE=rocm-llama-cpp:rocm714
 export TEST_REPO=unsloth/Qwen3.5-2B-GGUF
 ```
 
+`TEST_REPO` is not kept in the local cache; the first `--hf-repo` run downloads it (~2 GB) into the mounted cache. Pre-fetch it from the host with `hf download "$TEST_REPO" --include '*.gguf'` if you want the smoke test to start without a download pause.
+
 The scripts accept `IMAGE`, `HOME_VOLUME`, and `HIP_VISIBLE_DEVICES` from the environment. If `HIP_VISIBLE_DEVICES` is unset, the container can see all GPUs passed through `--device`.
 
 ## Quick start: interactive Qwen3.8-27B
@@ -46,11 +48,39 @@ docker stop --time 30 rocm-llama-interactive
 
 ## Quick start: Qwen3.8-27B multi-GPU modes
 
-The validated ROCm device order is physical device 0=R9700, 1=MI100, 2=RX 7900 XTX, and 3=R9700. `HIP_VISIBLE_DEVICES` selects physical devices and exposes them to llama.cpp as logical devices starting at 0. The commands use the pinned llama.cpp options `--split-mode`, `--tensor-split`, and `--main-gpu`.
+The validated ROCm device order is physical device 0=R9700, 1=MI100, 2=RX 7900 XTX, and 3=R9700. `HIP_VISIBLE_DEVICES` selects physical devices and exposes them to llama.cpp as logical devices starting at 0. The commands use the pinned llama.cpp options `--split-mode`, `--tensor-split`, and `--main-gpu`. **Cards 0 and 3 are reserved for vLLM; llama.cpp defaults to cards 1 and 2.**
 
-### Two R9700s: tensor-parallel mode with 256k context
+### Primary: MI100 + RX 7900 XTX, tensor mode, 256k context with MTP
 
-Select physical devices 0 and 3. The selected cards become logical GPUs 0 and 1, and `--split-mode tensor` enables the parallelized tensor split. The 256k configuration uses 16-bit FP16 KV cache:
+Select physical devices 1 and 2. They become logical GPUs 0 and 1. The validated configuration uses the tensor split with `--tensor-split 16,9` (the 32 GB MI100 weighted against the 7900 XTX's ~22 GB usable), F16 KV cache, and the embedded MTP branch at 256k context. `run-server-mi100.sh` applies exactly this through `models.ini`; the manual equivalent is:
+
+```bash
+# Host terminal, from rocm_docker/.
+HIP_VISIBLE_DEVICES=1,2 ./interactive-server.sh --detach
+docker exec -it --user llama rocm-llama-interactive /bin/bash
+
+# Inside the container.
+llama-server \
+  --hf-repo unsloth/Qwen3.8-27B-GGUF \
+  --split-mode tensor \
+  --tensor-split 16,9 \
+  --ctx-size 262144 \
+  --flash-attn on \
+  --cache-type-k f16 \
+  --cache-type-v f16 \
+  --spec-type draft-mtp \
+  --spec-draft-n-max 3 \
+  --parallel 1 \
+  --host 127.0.0.1 \
+  --port 8000 \
+  -ngl all
+```
+
+Row splitting cannot allocate on the MI100 in this image (`device ROCm0 does not support split buffers`), and tensor mode is not supported for the MoE tracks, which stay on the layer split. Q8 KV can reduce memory use if FP16 KV does not fit; use `--cache-type-k q8_0 --cache-type-v q8_0` and matching `--spec-draft-type-k q8_0 --spec-draft-type-v q8_0` as the fallback.
+
+### Two R9700s: tensor-parallel mode with 256k context (only when vLLM is idle)
+
+Select physical devices 0 and 3. The selected cards become logical GPUs 0 and 1, and `--split-mode tensor` enables the parallelized tensor split. The 256k configuration uses 16-bit FP16 KV cache. Do not run this while vLLM holds the pair:
 
 ```bash
 # Host terminal, from rocm_docker/.
@@ -84,28 +114,7 @@ Native MTP is optional. Add these parameters to the command above to enable the 
 
 The optional MTP parameters use the same 16-bit FP16 KV cache at 256k context. Q8 KV can reduce memory use if FP16 KV does not fit; use `--cache-type-k q8_0 --cache-type-v q8_0` and matching `--spec-draft-type-k q8_0 --spec-draft-type-v q8_0` as the fallback.
 
-### RX 7900 XTX and MI100: layer-split mode with 200k context
-
-Select physical devices 1 and 2. They become logical GPUs 0 and 1. The requested row-split mode was tested but cannot allocate on the MI100 in this image: llama.cpp reports `device ROCm0 does not support split buffers`. Use the compatible layer split instead:
-
-```bash
-# Host terminal, from rocm_docker/.
-HIP_VISIBLE_DEVICES=1,2 ./interactive-server.sh --detach
-docker exec -it --user llama rocm-llama-interactive /bin/bash
-
-# Inside the container.
-llama-server \
-  --hf-repo unsloth/Qwen3.8-27B-GGUF \
-  --split-mode layer \
-  --tensor-split 1,1 \
-  --ctx-size 204800 \
-  --flash-attn on \
-  --host 127.0.0.1 \
-  --port 8000 \
-  -ngl all
-```
-
-The two `--tensor-split 1,1` values request an equal model split across the two selected GPUs. These large contexts require sufficient model, KV-cache, and runtime workspace memory; reduce the context size if initialization reports an out-of-memory error. Stop either session with `Ctrl-C`, exit Bash, and run:
+These large contexts require sufficient model, KV-cache, and runtime workspace memory; reduce the context size if initialization reports an out-of-memory error. Stop either session with `Ctrl-C`, exit Bash, and run:
 
 ```bash
 docker stop --time 30 rocm-llama-interactive
@@ -154,7 +163,7 @@ llama-server \
   -ngl all
 ```
 
-### Container 2: MI100 and RX 7900 XTX, layer split
+### Container 2: MI100 and RX 7900 XTX, tensor split 16,9
 
 Physical GPUs 1 and 2 are remapped to logical GPUs 0 and 1 inside this container:
 
@@ -176,10 +185,15 @@ Inside the second container:
 ```bash
 llama-server \
   --hf-repo unsloth/Qwen3.8-27B-GGUF \
-  --split-mode layer \
-  --tensor-split 1,1 \
-  --ctx-size 204800 \
+  --split-mode tensor \
+  --tensor-split 16,9 \
+  --ctx-size 262144 \
   --flash-attn on \
+  --cache-type-k f16 \
+  --cache-type-v f16 \
+  --spec-type draft-mtp \
+  --spec-draft-n-max 3 \
+  --parallel 1 \
   --host 0.0.0.0 \
   --port 8000 \
   -ngl all
@@ -221,6 +235,14 @@ HF_HOME:   /home/llama/.cache/huggingface
 ```
 
 The detached router script uses the same host cache but mounts it at `/tmp/huggingface` and sets `HF_HOME=/tmp/huggingface` for the server process. The two paths are intentional; both refer to the same host cache.
+
+Because the host cache contains entries created by different users (the host `hf` CLI and the container `llama` user under rootless podman), keep the metadata writable by both after host-side downloads:
+
+```bash
+chmod -R o+rwX "$HOME/.cache/huggingface"
+```
+
+Without this the router logs `failed to write file: .../refs/main`, falls back to the locked snapshot, and cannot stream a first-time download. The large GGUF blobs are content-addressed and never rewritten, so this only matters for refs, locks, and new files.
 
 ## 1. Build a persistent image
 
@@ -436,6 +458,7 @@ IMAGE="$IMAGE" ./interactive-server.sh
 Inside the container:
 
 ```bash
+hf download unsloth/Qwen3.5-2B-GGUF --include '*Q8_0.gguf'
 MODEL=$(find "$HF_HOME/hub/models--unsloth--Qwen3.5-2B-GGUF/snapshots" \
   \( -type f -o -type l \) -name '*.gguf' -print -quit)
 test -n "$MODEL" || { echo 'Qwen GGUF not found in HF cache' >&2; exit 1; }
@@ -486,39 +509,21 @@ Inside the shell:
 llama-bench --list-devices
 ```
 
-Use the indices reported by the container. Do not assume that the two R9700 cards are `2,3`; that is only an example.
+Use the indices reported by the container. The current validated host enumeration (`rocm-smi --showproductname`) is 0 = R9700, 1 = MI100, 2 = RX 7900 XTX, 3 = R9700. Cards 0 and 3 are reserved for vLLM; llama.cpp runs use `HIP_VISIBLE_DEVICES=1,2`, which `run-server-mi100.sh` pins automatically.
 
-### Two R9700 cards only
+### Default: MI100 and RX 7900 XTX (cards 1 and 2)
 
-If the device list identifies the R9700 cards as indices `2` and `3`, run:
+The checked-in `models.ini` uses `tensor-split = 16,9` for this pair: logical GPU 0 is the 32 GB MI100 and logical GPU 1 is the 7900 XTX (~22 GB usable), and 16:9 was the validated split for the 256k dense configurations. Nothing extra is needed; just launch `./run-server-mi100.sh`.
 
-```bash
-HIP_VISIBLE_DEVICES=2,3 IMAGE="$IMAGE" ./interactive-server.sh
-```
+### Two R9700 cards (0 and 3) — only when vLLM is idle
 
-Inside the shell, verify that only those devices are visible:
+The R9700 pair is vLLM's allocation. If vLLM is stopped and you want llama.cpp on those equal 32 GB cards, override the selector and the split:
 
 ```bash
-llama-bench --list-devices
+HIP_VISIBLE_DEVICES=0,3 IMAGE="$IMAGE" ./interactive-server.sh
 ```
 
-For the detached router, use the same selector:
-
-```bash
-HIP_VISIBLE_DEVICES=2,3 IMAGE="$IMAGE" ./run-server.sh
-```
-
-The `models.ini` default `tensor-split = 9,16` was tuned for the MI100 plus 7900 XTX setup. For two equal 32 GB R9700 cards, benchmark an equal split such as `tensor-split = 1,1` in a copied `models.ini`, rebuild the image, and compare the results. Do not assume the old split is correct for the R9700 pair.
-
-### MI100 and 7900 XTX only
-
-If those devices are indices `0` and `1`, run:
-
-```bash
-HIP_VISIBLE_DEVICES=0,1 IMAGE="$IMAGE" ./interactive-server.sh
-```
-
-For the current router configuration, this is the hardware set that matches the checked-in `tensor-split = 9,16` default most closely. Confirm the actual enumeration before using the values.
+Inside the shell, verify that only those devices are visible with `llama-bench --list-devices`. For the router, edit the `[*]` `tensor-split` to `1,1` (or per-section, since the launcher mounts `models.ini` live) before starting with `HIP_VISIBLE_DEVICES=0,3 ./run-server.sh`. Do not run this concurrently with vLLM on the same pair.
 
 ### One-off manual container
 
@@ -546,7 +551,9 @@ Run the benchmark device listing once with all GPUs and once with the selected `
 
 ## Router mode and model configuration
 
-`run-server.sh` starts the Dockerfile CMD, which loads `/etc/llama-server/models.ini` with `--models-preset` and limits the router to one loaded model with `--models-max 1`. The model section header is the client-facing model ID. The router uses the model sections embedded in `models.ini`. The direct smoke tests in this guide use `$TEST_REPO` (`unsloth/Qwen3.5-2B-GGUF`) so they do not require loading a 27B model. Router checks use the model ID printed by `/v1/models`, unless the small test model has first been added to `models.ini` and the image rebuilt.
+`run-server.sh` and `run-server-mi100.sh` start the Dockerfile CMD, which loads `/etc/llama-server/models.ini` with `--models-preset` and caps simultaneous residency at `--models-max 4`, matching the four jukebox tracks. The launchers bind-mount the repository's `models.ini` over the image copy, so track edits take effect on the next container start without an image rebuild. The model section header is the client-facing model ID. Tracks without `load-on-startup` load on first request; a request for a model above the residency cap unloads the least recently used track. The direct smoke tests in this guide use `$TEST_REPO` (`unsloth/Qwen3.5-2B-GGUF`) so they do not require loading a 27B model. Router checks use the model ID printed by `/v1/models`.
+
+Use `./run-server-mi100.sh` for the normal launch: it pins `HIP_VISIBLE_DEVICES=1,2` (MI100 + RX 7900 XTX; the R9700 pair on cards 0 and 3 is reserved for vLLM) and publishes the router on `http://127.0.0.1:8000`. The per-track context sizes (262144), sampling defaults from each model's Hugging Face card, splits (dense `tensor 16,9`, MoE layer split), and the Qwen3.8-27B MTP draft path are documented in the repository README.
 
 Check the router API after starting it:
 
@@ -557,7 +564,7 @@ curl --fail http://127.0.0.1:8000/v1/chat/completions \
   -d '{"model":"<model-id-from-v1-models>","messages":[{"role":"user","content":"Reply with exactly: API verified"}],"max_tokens":128,"temperature":0}'
 ```
 
-The checked-in router CMD currently binds `0.0.0.0` because `run-server.sh` uses host networking. Restrict access with a firewall or change the CMD to `127.0.0.1` before using it on an untrusted network. The direct interactive example above binds to `127.0.0.1`.
+The router CMD binds `127.0.0.1` on the host network, so the API is reachable from the host loopback only. Change the CMD to `0.0.0.0` when peer containers on a user-defined bridge need direct access. The direct interactive example above binds to `127.0.0.1`.
 
 ## Troubleshooting
 

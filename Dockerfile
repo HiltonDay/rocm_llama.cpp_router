@@ -4,6 +4,7 @@ FROM docker.io/rocm/dev-ubuntu-24.04:7.14.0-full AS llama-builder
 # to produce the separate rdna-boosts experiment image.
 ARG LLAMA_CPP_COMMIT=9723942adc518b43c4b95dc4dce6906903eb5e09
 ARG RDNA_BOOSTS_COMMIT=
+ARG BUILD_JOBS=auto
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libcurl4-openssl-dev \
@@ -36,7 +37,11 @@ RUN cmake -S . -B build \
       -DAMDGPU_TARGETS=$LLAMACPP_ROCM_ARCH \
       -DCMAKE_BUILD_TYPE=Release \
       -DLLAMA_OPENSSL=ON \
-    && cmake --build build --config Release -j$(nproc)
+    && if [ "$BUILD_JOBS" = "auto" ]; then \
+         cmake --build build --config Release -j"$(nproc)"; \
+       else \
+         cmake --build build --config Release -j"$BUILD_JOBS"; \
+       fi
 
 RUN mkdir -p /usr/local/bin/llama \
     && cp build/bin/llama-server /usr/local/bin/llama/llama-server \
@@ -60,6 +65,7 @@ RUN pip install huggingface_hub hf_transfer \
 ENV PATH=/usr/local/bin/llama:/opt/venv/bin:$PATH
 ENV LD_LIBRARY_PATH=/usr/local/bin/llama:/opt/venv/lib/python3.12/site-packages/_rocm_sdk_core/lib:/opt/venv/lib/python3.12/site-packages/_rocm_sdk_core/lib/llvm/lib:/opt/venv/lib/python3.12/site-packages/_rocm_sdk_libraries/lib:$LD_LIBRARY_PATH
 ENV HF_HOME=/home/llama/.cache/huggingface
+ENV HF_XET_HIGH_PERFORMANCE=1
 ENV HOME=/home/llama
 ENV HISTFILE=/home/llama/.bash_history
 ENV HISTSIZE=10000
@@ -82,4 +88,4 @@ EXPOSE 8000
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
-CMD ["/usr/local/bin/llama/llama-server", "--models-preset", "/etc/llama-server/models.ini", "--models-max", "1", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["/usr/local/bin/llama/llama-server", "--models-preset", "/etc/llama-server/models.ini", "--models-max", "3", "--host", "127.0.0.1", "--port", "8000"]

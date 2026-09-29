@@ -10,23 +10,23 @@
 
 | Slot | GPU | Architecture | VRAM | Wave Size | Notes |
 |------|-----|-------------|------|-----------|-------|
-| 0 | AMD Instinct MI100 | gfx908 (CDNA) | 32 GB | 64 | Power limited to 200W for thermals |
-| 1 | AMD Radeon RX 7900 XTX | gfx1100 (RDNA3) | 24 GB | 32 | Also drives display, ~2GB reserved |
-| TBD | AMD Radeon AI PRO R9700 #1 | gfx1201 (RDNA4) | 32 GB | 32 | Not yet installed |
-| TBD | AMD Radeon AI PRO R9700 #2 | gfx1201 (RDNA4) | 32 GB | 32 | Not yet installed |
+| 0 | AMD Radeon AI PRO R9700 #1 | gfx1201 (RDNA4) | 32 GB | 32 | Reserved for vLLM |
+| 1 | AMD Instinct MI100 | gfx908 (CDNA) | 32 GB | 64 | llama.cpp (HIP_VISIBLE_DEVICES=1,2); power limited to 200W for thermals |
+| 2 | AMD Radeon RX 7900 XTX | gfx1100 (RDNA3) | 24 GB | 32 | llama.cpp; also drives display, ~2GB reserved |
+| 3 | AMD Radeon AI PRO R9700 #2 | gfx1201 (RDNA4) | 32 GB | 32 | Reserved for vLLM |
 
 **Total VRAM (all 4 installed):** 120 GB across 3 architectures
 
-### Current Working Config (2 GPUs)
+### Current Working Config (2026-09-30)
+- llama.cpp jukebox: cards 1 + 2 (MI100 + 7900 XTX), ~54 GB combined, ~22 GB usable on the display GPU
+- Tensor-split: `16,9` in tensor mode (validated at 262144 ctx with F16 KV + MTP on Qwen3.8-27B); layer split with the same ratio for MoE tracks
+- vLLM: cards 0 + 3 (R9700 pair)
+- Router `--models-max 3`: all jukebox tracks (Qwen3.8-27B, Qwen3.6-27B, Qwen3.6-35B-A3B) may stay resident via mmap from the host page cache (378 GB RAM)
+
+### Historical 2-GPU Config
 - Useable VRAM: ~52 GB (24 - 2 display + 32 = 54, practical ~52)
 - Tensor-split: `5/8` (blog) or `9/16` (models.ini) — protects display GPU
 - 256k context achieved with Qwen3.6-35B-A3B MoE Q8_0
-
-### Planned Config (4 GPUs)
-- Useable VRAM: ~118 GB
-- Three architectures require `LLAMACPP_ROCM_ARCH="gfx908,gfx1100,gfx1201"`
-- Tensor-split will need recalculating for 4-way split
-- PCIe topology matters — need to check available lanes/slots
 
 ## Benchmark Baselines (2-GPU, HIP, FA on, Q8_0)
 
